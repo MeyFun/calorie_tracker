@@ -31,6 +31,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _fatController = TextEditingController();
   final _carbsController = TextEditingController();
   final _eatenWeightController = TextEditingController();
+  final _quantityController = TextEditingController(text: "1"); // Контроллер количества
 
   @override
   void initState() {
@@ -117,6 +118,7 @@ class _HomeScreenState extends State<HomeScreen> {
       calories: double.tryParse(_calController.text) ?? 0,
       baseWeight: double.tryParse(_baseWeightController.text) ?? 100,
       weightEaten: double.tryParse(_eatenWeightController.text) ?? 0,
+      quantity: int.tryParse(_quantityController.text) ?? 1, // Привязываем количество
     );
 
     setState(() {
@@ -142,10 +144,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _itemNameController.clear(); _calController.clear(); _proteinController.clear();
     _fatController.clear(); _carbsController.clear(); _eatenWeightController.clear();
     _baseWeightController.text = "100"; _groupNameController.text = "Одиночный продукт";
+    _quantityController.text = "1"; // Сброс поля штучности
+    
     Navigator.pop(context);
   }
 
-  // Окно просмотра подробных данных КБЖУ с возможностью удаления (Пункт 5)
+  // Окно просмотра подробных данных КБЖУ с возможностью удаления
   void _showDetailsDialog(FoodGroup group) {
     showDialog(
       context: context,
@@ -163,9 +167,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       itemBuilder: (context, idx) {
                         final item = group.items[idx];
                         return ExpansionTile(
-                          title: Text('${item.name} (${item.weightEaten.toStringAsFixed(0)}г)', style: const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text('Итого: ${item.totalCalories.toStringAsFixed(0)} ккал'),
-                          // --- ДОБАВЛЯЕМ КНОПКУ УДАЛЕНИЯ ПРОДУКТА ---
+                          // Выводим название, вес одной штуки и их количество
+                          title: Text('${item.name} (${item.weightEaten.toStringAsFixed(0)}г х ${item.quantity}шт)', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Text('Итого вес: ${item.totalWeight.toStringAsFixed(0)}г | ${item.totalCalories.toStringAsFixed(0)} ккал'),
+                          // КНОПКА УДАЛЕНИЯ ПРОДУКТА
                           trailing: IconButton(
                             icon: const Icon(Icons.delete_outline, color: Colors.red),
                             onPressed: () {
@@ -197,7 +202,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   Text('• Калорийность базы: ${item.calories.toStringAsFixed(1)} ккал'),
                                   Text('• Белки базы: ${item.protein}г | Жиры: ${item.fat}г | Углеводы: ${item.carbs}г'),
                                   const Divider(),
-                                  Text('Фактически усвоено (на ${item.weightEaten.toStringAsFixed(0)}г):', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                                  Text('Фактически усвоено (на ${item.totalWeight.toStringAsFixed(0)}г):', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
                                   Text('• Расчетные Белки: ${item.totalProtein.toStringAsFixed(1)}г'),
                                   Text('• Расчетные Жиры: ${item.totalFat.toStringAsFixed(1)}г'),
                                   Text('• Расчетные Углеводы: ${item.totalCarbs.toStringAsFixed(1)}г'),
@@ -252,7 +257,29 @@ class _HomeScreenState extends State<HomeScreen> {
                   Expanded(child: TextField(controller: _carbsController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Углеводы'))),
                 ],
               ),
-              TextField(controller: _eatenWeightController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Сколько грамм добавлено / съедено?')),
+              const SizedBox(height: 8),
+              // Объединяем Вес 1 порции и Количество в аккуратную строку
+              Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: TextField(
+                      controller: _eatenWeightController, 
+                      keyboardType: TextInputType.number, 
+                      decoration: const InputDecoration(labelText: 'Вес 1 порции/шт (г)', border: OutlineInputBorder())
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 1,
+                    child: TextField(
+                      controller: _quantityController, 
+                      keyboardType: TextInputType.number, 
+                      decoration: const InputDecoration(labelText: 'Кол-во (шт)', border: OutlineInputBorder())
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: _addFoodEntry,
@@ -326,7 +353,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     
                     const Divider(height: 24, thickness: 1),
                     
-                    // --- НОВЫЙ БЛОК: СТАТИСТИКА БЖУ ---
+                    // --- СТАТИСТИКА БЖУ ---
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
@@ -398,5 +425,4 @@ class _HomeScreenState extends State<HomeScreen> {
       ],
     );
   }
-
 }

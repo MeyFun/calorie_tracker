@@ -4,8 +4,9 @@ class FoodItem {
   double fat;
   double carbs;
   double calories;
-  double baseWeight;  // На сколько грамм (например 100г или 1000г)
-  double weightEaten; // Сколько фактически съедено / добавлено в блюдо
+  double baseWeight;  // На сколько грамм (например, 100г или 1000г)
+  double weightEaten; // Вес ОДНОЙ штуки / порции
+  int quantity;       // КОЛИЧЕСТВО штук (Новое поле)
 
   FoodItem({
     required this.name,
@@ -15,13 +16,17 @@ class FoodItem {
     required this.calories,
     required this.baseWeight,
     required this.weightEaten,
+    this.quantity = 1, // По умолчанию 1 штука
   });
 
-  // Расчет КБЖУ на съеденную массу
-  double get totalCalories => (calories * weightEaten) / baseWeight;
-  double get totalProtein => (protein * weightEaten) / baseWeight;
-  double get totalFat => (fat * weightEaten) / baseWeight;
-  double get totalCarbs => (carbs * weightEaten) / baseWeight;
+  // Общий фактический вес с учетом количества
+  double get totalWeight => weightEaten * quantity;
+
+  // Расчет КБЖУ на суммарный съеденный вес всех штук
+  double get totalCalories => (calories * totalWeight) / baseWeight;
+  double get totalProtein => (protein * totalWeight) / baseWeight;
+  double get totalFat => (fat * totalWeight) / baseWeight;
+  double get totalCarbs => (carbs * totalWeight) / baseWeight;
 
   Map<String, dynamic> toMap() => {
     'name': name,
@@ -31,6 +36,7 @@ class FoodItem {
     'calories': calories,
     'baseWeight': baseWeight,
     'weightEaten': weightEaten,
+    'quantity': quantity,
   };
 
   factory FoodItem.fromMap(Map<dynamic, dynamic> map) {
@@ -42,6 +48,7 @@ class FoodItem {
       calories: (map['calories'] as num?)?.toDouble() ?? 0.0,
       baseWeight: (map['baseWeight'] as num?)?.toDouble() ?? 100.0,
       weightEaten: (map['weightEaten'] as num?)?.toDouble() ?? 0.0,
+      quantity: map['quantity'] ?? 1,
     );
   }
 }
