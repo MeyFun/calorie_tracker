@@ -23,7 +23,7 @@ class CalorieTrackerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Мой Калькулятор Калорий',
+      title: 'Мой Баланс',
       debugShowCheckedModeBanner: false,
       // ПОДКЛЮЧАЕМ ЛОКАЛИЗАЦИЮ:
       localizationsDelegates: const [
