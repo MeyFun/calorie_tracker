@@ -1,0 +1,256 @@
+import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import '../models/user_profile.dart';
+import '../models/food_item.dart';
+import '../models/food_group.dart';
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final _box = Hive.box('settingsBox');
+  List<FoodGroup> _journal = [];
+
+  // Контроллеры ввода
+  final _groupNameController = TextEditingController(text: "Одиночный продукт");
+  final _itemNameController = TextEditingController();
+  final _baseWeightController = TextEditingController(text: "100");
+  final _calController = TextEditingController();
+  final _proteinController = TextEditingController();
+  final _fatController = TextEditingController();
+  final _carbsController = TextEditingController();
+  final _eatenWeightController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  void _loadData() {
+    setState(() {      
+      var rawJournal = _box.get('foodJournal') as List? ?? [];
+      _journal = rawJournal.map((e) => FoodGroup.fromMap(e as Map)).toList();
+    });
+  }
+
+  void _saveJournalToDatabase() {
+    final mapList = _journal.map((g) => g.toMap()).toList();
+    _box.put('foodJournal', mapList);
+  }
+
+  double get _totalCaloriesToday => _journal.fold(0, (sum, group) => sum + group.totalCalories);
+
+  void _addFoodEntry() {
+    if (_itemNameController.text.isEmpty || _eatenWeightController.text.isEmpty) return;
+
+    final newItem = FoodItem(
+      name: _itemNameController.text,
+      protein: double.tryParse(_proteinController.text) ?? 0,
+      fat: double.tryParse(_fatController.text) ?? 0,
+      carbs: double.tryParse(_carbsController.text) ?? 0,
+      calories: double.tryParse(_calController.text) ?? 0,
+      baseWeight: double.tryParse(_baseWeightController.text) ?? 100,
+      weightEaten: double.tryParse(_eatenWeightController.text) ?? 0,
+    );
+
+    setState(() {
+      String gName = _groupNameController.text.trim();
+      if (gName.isEmpty) gName = "Одиночный продукт";
+
+      // Если группа с таким именем уже есть (например, "Бутерброд"), добавляем продукт внутрь нее
+      var existingGroup = _journal.firstWhere((g) => g.groupName.toLowerCase() == gName.toLowerCase(), 
+        orElse: () => FoodGroup(groupName: gName, items: []));
+
+      if (!_journal.contains(existingGroup)) {
+        existingGroup.items.add(newItem);
+        _journal.add(existingGroup);
+      } else {
+        existingGroup.items.add(newItem);
+      }
+
+      _saveJournalToDatabase();
+    });
+
+    // Сброс и закрытие
+    _itemNameController.clear(); _calController.clear(); _proteinController.clear();
+    _fatController.clear(); _carbsController.clear(); _eatenWeightController.clear();
+    _baseWeightController.text = "100"; _groupNameController.text = "Одиночный продукт";
+    Navigator.pop(context);
+  }
+
+  // Окно просмотра подробных данных КБЖУ продукта (Пункт 5)
+  void _showDetailsDialog(FoodGroup group) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Детали: ${group.groupName}', style: const TextStyle(fontWeight: FontWeight.bold)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: group.items.length,
+            itemBuilder: (context, idx) {
+              final item = group.items[idx];
+              return ExpansionTile(
+                title: Text('${item.name} (${item.weightEaten.toStringAsFixed(0)}г)', style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text('Итого: ${item.totalCalories.toStringAsFixed(0)} ккал'),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('На упаковке было указано КБЖУ на: ${item.baseWeight.toStringAsFixed(0)}г'),
+                        Text('• Калорийность базы: ${item.calories.toStringAsFixed(1)} ккал'),
+                        Text('• Белки базы: ${item.protein}г | Жиры: ${item.fat}г | Углеводы: ${item.carbs}г'),
+                        const Divider(),
+                        Text('Фактически усвоено (на ${item.weightEaten.toStringAsFixed(0)}г):', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                        Text('• Расчетные Белки: ${item.totalProtein.toStringAsFixed(1)}г'),
+                        Text('• Расчетные Жиры: ${item.totalFat.toStringAsFixed(1)}г'),
+                        Text('• Расчетные Углеводы: ${item.totalCarbs.toStringAsFixed(1)}г'),
+                      ],
+                    ),
+                  )
+                ],
+              );
+            },
+          ),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Закрыть'))],
+      ),
+    );
+  }
+
+  void _showAddFoodBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 16, right: 16, top: 16),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Добавить пищу', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              TextField(controller: _groupNameController, decoration: const InputDecoration(labelText: 'Название группы/блюда (например: Бутерброд или Одиночный продукт)', border: OutlineInputBorder())),
+              const SizedBox(height: 8),
+              TextField(controller: _itemNameController, decoration: const InputDecoration(labelText: 'Конкретный ингредиент (например: Легкий Сыр)', border: OutlineInputBorder())),
+              Row(
+                children: [
+                  Expanded(child: TextField(controller: _baseWeightController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Вес на упаковке (г)'))),
+                  const SizedBox(width: 16),
+                  Expanded(child: TextField(controller: _calController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Калории на этот вес'))),
+                ],
+              ),
+              Row(
+                children: [
+                  Expanded(child: TextField(controller: _proteinController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Белки'))),
+                  const SizedBox(width: 8),
+                  Expanded(child: TextField(controller: _fatController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Жиры'))),
+                  const SizedBox(width: 8),
+                  Expanded(child: TextField(controller: _carbsController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Углеводы'))),
+                ],
+              ),
+              TextField(controller: _eatenWeightController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Сколько грамм добавлено / съедено?')),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _addFoodEntry,
+                style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50), backgroundColor: Colors.green),
+                child: const Text('Внести в дневник', style: TextStyle(color: Colors.white)),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    ).then((_) => _loadData()); // Обновить данные при закрытии
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Дневник Калорий'),
+        backgroundColor: Colors.green,
+        foregroundColor: Colors.white,
+      ),
+      body: Column(
+        children: [
+          // Оборачиваем виджет в слушатель базы данных Hive
+          ValueListenableBuilder(
+            valueListenable: Hive.box('settingsBox').listenable(),
+            builder: (context, Box box, child) {
+              // Каждые раз, когда профиль сохраняется, этот код выполняется заново:
+              final rawProfile = box.get('userProfile');
+              final profile = UserProfile.fromMap(rawProfile);
+              final int norm = profile.dailyCalories;
+
+              return Container(
+                margin: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withValues(alpha: 0.1),
+                      blurRadius: 10,
+                    )
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      'Норма дня: $norm ккал',
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 10),
+                    LinearProgressIndicator(
+                      value: norm > 0 ? _totalCaloriesToday / norm : 0,
+                      backgroundColor: Colors.grey[200],
+                      color: _totalCaloriesToday > norm ? Colors.red : Colors.green,
+                      minHeight: 12,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Принято: ${_totalCaloriesToday.toStringAsFixed(0)} / $norm ккал',
+                      style: const TextStyle(fontSize: 15),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+
+          Expanded(
+            child: _journal.isEmpty
+                ? const Center(child: Text('Дневник пуст. Нажмите на +'))
+                : ListView.builder(
+                    itemCount: _journal.length,
+                    itemBuilder: (context, index) {
+                      final group = _journal[index];
+                      return Card(
+                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                        child: ListTile(
+                          onTap: () => _showDetailsDialog(group),
+                          title: Text(group.groupName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          subtitle: Text('Ингредиентов: ${group.items.length}\nБ: ${group.totalProtein.toStringAsFixed(1)} | Ж: ${group.totalFat.toStringAsFixed(1)} | У: ${group.totalCarbs.toStringAsFixed(1)}'),
+                          trailing: Text('${group.totalCalories.toStringAsFixed(0)} ккал', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 16)),
+                          isThreeLine: true,
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(onPressed: _showAddFoodBottomSheet, backgroundColor: Colors.green, child: const Icon(Icons.add, color: Colors.white)),
+    );
+  }
+}
