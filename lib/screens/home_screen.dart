@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:intl/intl.dart'; // Понадобится для красивого форматирования дат
 import '../models/user_profile.dart';
 import '../models/food_item.dart';
 import '../models/food_group.dart';
@@ -13,7 +14,13 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _box = Hive.box('settingsBox');
-  List<FoodGroup> _journal = [];
+  
+  // Текущая выбранная дата ( по дефолту — сегодня )
+  DateTime _selectedDate = DateTime.now();
+  
+  // Дневник теперь хранит данные по дням: {'2026-05-25': [FoodGroup1, FoodGroup2]}
+  Map<String, List<FoodGroup>> _allDaysJournal = {};
+  List<FoodGroup> _currentDayEntries = [];
 
   // Контроллеры ввода
   final _groupNameController = TextEditingController(text: "Одиночный продукт");
@@ -31,19 +38,73 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadData();
   }
 
+  // Преобразуем DateTime в строку-ключ "YYYY-MM-DD"
+  String _dateToKey(DateTime date) {
+    return "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
+  }
+
   void _loadData() {
-    setState(() {      
-      var rawJournal = _box.get('foodJournal') as List? ?? [];
-      _journal = rawJournal.map((e) => FoodGroup.fromMap(e as Map)).toList();
+    setState(() {
+      // 1. Загружаем структуру журнала из базы
+      var rawJournal = _box.get('foodJournalMap') as Map? ?? {};
+      
+      _allDaysJournal = rawJournal.map((key, value) {
+        var list = value as List? ?? [];
+        return MapEntry(
+          key.toString(),
+          list.map((e) => FoodGroup.fromMap(e as Map)).toList(),
+        );
+      });
+
+      // 2. Достаем продукты конкретно для выбранного дня
+      String dateKey = _dateToKey(_selectedDate);
+      _currentDayEntries = _allDaysJournal[dateKey] ?? [];
     });
   }
 
   void _saveJournalToDatabase() {
-    final mapList = _journal.map((g) => g.toMap()).toList();
-    _box.put('foodJournal', mapList);
+    // Обновляем текущий день в общем словаре перед сохранением
+    String dateKey = _dateToKey(_selectedDate);
+    _allDaysJournal[dateKey] = _currentDayEntries;
+
+    // Конвертируем всю структуру в Map для Hive
+    final mapToSave = _allDaysJournal.map((key, value) {
+      return MapEntry(key, value.map((g) => g.toMap()).toList());
+    });
+
+    _box.put('foodJournalMap', mapToSave);
   }
 
-  double get _totalCaloriesToday => _journal.fold(0, (sum, group) => sum + group.totalCalories);
+  double get _totalCaloriesToday => _currentDayEntries.fold(0, (sum, group) => sum + group.totalCalories);
+
+  // Функция вызова календаря (Пункт 3)
+  void _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2025), // С какого года работает история
+      lastDate: DateTime(2101),
+      locale: const Locale('ru', 'RU'), // Локализация на русский язык
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Colors.green, // Цвет шапки календаря
+              onPrimary: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null && picked != _selectedDate) {
+      setState(() {
+        _selectedDate = picked;
+        _loadData(); // Переподтягиваем продукты для новой выбранной даты
+      });
+    }
+  }
 
   void _addFoodEntry() {
     if (_itemNameController.text.isEmpty || _eatenWeightController.text.isEmpty) return;
@@ -62,13 +123,14 @@ class _HomeScreenState extends State<HomeScreen> {
       String gName = _groupNameController.text.trim();
       if (gName.isEmpty) gName = "Одиночный продукт";
 
-      // Если группа с таким именем уже есть (например, "Бутерброд"), добавляем продукт внутрь нее
-      var existingGroup = _journal.firstWhere((g) => g.groupName.toLowerCase() == gName.toLowerCase(), 
-        orElse: () => FoodGroup(groupName: gName, items: []));
+      var existingGroup = _currentDayEntries.firstWhere(
+        (g) => g.groupName.toLowerCase() == gName.toLowerCase(), 
+        orElse: () => FoodGroup(groupName: gName, items: [])
+      );
 
-      if (!_journal.contains(existingGroup)) {
+      if (!_currentDayEntries.contains(existingGroup)) {
         existingGroup.items.add(newItem);
-        _journal.add(existingGroup);
+        _currentDayEntries.add(existingGroup);
       } else {
         existingGroup.items.add(newItem);
       }
@@ -76,14 +138,13 @@ class _HomeScreenState extends State<HomeScreen> {
       _saveJournalToDatabase();
     });
 
-    // Сброс и закрытие
+    // Сброс полей
     _itemNameController.clear(); _calController.clear(); _proteinController.clear();
     _fatController.clear(); _carbsController.clear(); _eatenWeightController.clear();
     _baseWeightController.text = "100"; _groupNameController.text = "Одиночный продукт";
     Navigator.pop(context);
   }
 
-  // Окно просмотра подробных данных КБЖУ продукта (Пункт 5)
   void _showDetailsDialog(FoodGroup group) {
     showDialog(
       context: context,
@@ -138,9 +199,9 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               const Text('Добавить пищу', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              TextField(controller: _groupNameController, decoration: const InputDecoration(labelText: 'Название группы/блюда (например: Бутерброд или Одиночный продукт)', border: OutlineInputBorder())),
+              TextField(controller: _groupNameController, decoration: const InputDecoration(labelText: 'Название группы/блюда', border: OutlineInputBorder())),
               const SizedBox(height: 8),
-              TextField(controller: _itemNameController, decoration: const InputDecoration(labelText: 'Конкретный ингредиент (например: Легкий Сыр)', border: OutlineInputBorder())),
+              TextField(controller: _itemNameController, decoration: const InputDecoration(labelText: 'Конкретный ингредиент', border: OutlineInputBorder())),
               Row(
                 children: [
                   Expanded(child: TextField(controller: _baseWeightController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Вес на упаковке (г)'))),
@@ -169,24 +230,36 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-    ).then((_) => _loadData()); // Обновить данные при закрытии
+    ).then((_) => _loadData());
   }
 
   @override
   Widget build(BuildContext context) {
+    // Красиво форматируем выбранную дату для вывода на экран (например, "25 мая")
+    String formattedDate = DateFormat('d MMMM', 'ru').format(_selectedDate);
+    
+    // Проверка, выбран ли сегодняшний день
+    bool isToday = _dateToKey(_selectedDate) == _dateToKey(DateTime.now());
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Дневник Калорий'),
+        title: Text(isToday ? 'Дневник: Сегодня' : 'Дневник: $formattedDate'),
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
+        actions: [
+          // Кнопка вызова календаря
+          IconButton(
+            icon: const Icon(Icons.calendar_month),
+            tooltip: 'Выбрать дату',
+            onPressed: () => _selectDate(context),
+          )
+        ],
       ),
       body: Column(
         children: [
-          // Оборачиваем виджет в слушатель базы данных Hive
           ValueListenableBuilder(
             valueListenable: Hive.box('settingsBox').listenable(),
             builder: (context, Box box, child) {
-              // Каждые раз, когда профиль сохраняется, этот код выполняется заново:
               final rawProfile = box.get('userProfile');
               final profile = UserProfile.fromMap(rawProfile);
               final int norm = profile.dailyCalories;
@@ -197,19 +270,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.withValues(alpha: 0.1),
-                      blurRadius: 10,
-                    )
-                  ],
+                  boxShadow: [BoxShadow(color: Colors.grey.withValues(alpha: 0.1), blurRadius: 10)],
                 ),
                 child: Column(
                   children: [
-                    Text(
-                      'Норма дня: $norm ккал',
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
+                    Text('Норма дня: $norm ккал', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 10),
                     LinearProgressIndicator(
                       value: norm > 0 ? _totalCaloriesToday / norm : 0,
@@ -218,23 +283,26 @@ class _HomeScreenState extends State<HomeScreen> {
                       minHeight: 12,
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      'Принято: ${_totalCaloriesToday.toStringAsFixed(0)} / $norm ккал',
-                      style: const TextStyle(fontSize: 15),
-                    ),
+                    Text('Принято за $formattedDate: ${_totalCaloriesToday.toStringAsFixed(0)} / $norm ккал', style: const TextStyle(fontSize: 15)),
                   ],
                 ),
               );
             },
           ),
-
           Expanded(
-            child: _journal.isEmpty
-                ? const Center(child: Text('Дневник пуст. Нажмите на +'))
+            child: _currentDayEntries.isEmpty
+                ? Center(
+                    child: Text(
+                      isToday 
+                        ? 'Сегодня вы еще ничего не добавили.' 
+                        : 'Нет записей за $formattedDate.',
+                      style: const TextStyle(color: Colors.grey, fontSize: 16),
+                    ),
+                  )
                 : ListView.builder(
-                    itemCount: _journal.length,
+                    itemCount: _currentDayEntries.length,
                     itemBuilder: (context, index) {
-                      final group = _journal[index];
+                      final group = _currentDayEntries[index];
                       return Card(
                         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                         child: ListTile(
@@ -250,7 +318,11 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(onPressed: _showAddFoodBottomSheet, backgroundColor: Colors.green, child: const Icon(Icons.add, color: Colors.white)),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showAddFoodBottomSheet, 
+        backgroundColor: Colors.green, 
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
     );
   }
 }

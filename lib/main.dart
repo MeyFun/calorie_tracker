@@ -1,16 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:flutter_localizations/flutter_localizations.dart'; // <-- Наш импорт
 import 'screens/main_navigation.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Инициализация локального хранилища на диске устройства
   await Hive.initFlutter();
   await Hive.openBox('settingsBox');
 
-  // Фиксируем только вертикальный режим
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
@@ -27,6 +25,15 @@ class CalorieTrackerApp extends StatelessWidget {
     return MaterialApp(
       title: 'Мой Калькулятор Калорий',
       debugShowCheckedModeBanner: false,
+      // ПОДКЛЮЧАЕМ ЛОКАЛИЗАЦИЮ:
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('ru', 'RU'), // Задаем русский язык основным
+      ],
       theme: ThemeData(
         primarySwatch: Colors.green,
         scaffoldBackgroundColor: const Color(0xFFF5F5F5),
