@@ -122,7 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() {
       String gName = _groupNameController.text.trim();
-      if (gName.isEmpty) gName = "Одиночный продукт";
+      if (gName.isEmpty) gName = "";
 
       // Исправленный поиск и добавление группы
       int existingIndex = _currentDayEntries.indexWhere(
@@ -141,7 +141,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // Сброс полей
     _itemNameController.clear(); _calController.clear(); _proteinController.clear();
     _fatController.clear(); _carbsController.clear(); _eatenWeightController.clear();
-    _baseWeightController.text = "100"; _groupNameController.text = "Одиночный продукт";
+    _baseWeightController.text = "100"; _groupNameController.text = "";
     _quantityController.text = "1";
     
     Navigator.pop(context);
