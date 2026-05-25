@@ -145,44 +145,78 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.pop(context);
   }
 
+  // Окно просмотра подробных данных КБЖУ с возможностью удаления (Пункт 5)
   void _showDetailsDialog(FoodGroup group) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Детали: ${group.groupName}', style: const TextStyle(fontWeight: FontWeight.bold)),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: group.items.length,
-            itemBuilder: (context, idx) {
-              final item = group.items[idx];
-              return ExpansionTile(
-                title: Text('${item.name} (${item.weightEaten.toStringAsFixed(0)}г)', style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text('Итого: ${item.totalCalories.toStringAsFixed(0)} ккал'),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('На упаковке было указано КБЖУ на: ${item.baseWeight.toStringAsFixed(0)}г'),
-                        Text('• Калорийность базы: ${item.calories.toStringAsFixed(1)} ккал'),
-                        Text('• Белки базы: ${item.protein}г | Жиры: ${item.fat}г | Углеводы: ${item.carbs}г'),
-                        const Divider(),
-                        Text('Фактически усвоено (на ${item.weightEaten.toStringAsFixed(0)}г):', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                        Text('• Расчетные Белки: ${item.totalProtein.toStringAsFixed(1)}г'),
-                        Text('• Расчетные Жиры: ${item.totalFat.toStringAsFixed(1)}г'),
-                        Text('• Расчетные Углеводы: ${item.totalCarbs.toStringAsFixed(1)}г'),
-                      ],
+      builder: (context) => StatefulBuilder( // Используем StatefulBuilder, чтобы окно обновлялось при удалении элементов
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: Text('Детали: ${group.groupName}', style: const TextStyle(fontWeight: FontWeight.bold)),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: group.items.isEmpty
+                  ? const Center(child: Text('В этом блюде не осталось продуктов.'))
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: group.items.length,
+                      itemBuilder: (context, idx) {
+                        final item = group.items[idx];
+                        return ExpansionTile(
+                          title: Text('${item.name} (${item.weightEaten.toStringAsFixed(0)}г)', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Text('Итого: ${item.totalCalories.toStringAsFixed(0)} ккал'),
+                          // --- ДОБАВЛЯЕМ КНОПКУ УДАЛЕНИЯ ПРОДУКТА ---
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete_outline, color: Colors.red),
+                            onPressed: () {
+                              setState(() {
+                                // 1. Удаляем продукт из группы на главном экране
+                                group.items.removeAt(idx);
+                                
+                                // 2. Если в группе не осталось продуктов, удаляем саму группу (блюдо)
+                                if (group.items.isEmpty) {
+                                  _currentDayEntries.remove(group);
+                                  Navigator.pop(context); // Закрываем диалог, так как блюда больше нет
+                                }
+                                
+                                // 3. Сохраняем обновленный журнал в локальную БД Hive
+                                _saveJournalToDatabase();
+                              });
+                              
+                              // Обновляем состояние внутри самого открытого диалогового окна
+                              setDialogState(() {});
+                            },
+                          ),
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('На упаковке было указано КБЖУ на: ${item.baseWeight.toStringAsFixed(0)}г'),
+                                  Text('• Калорийность базы: ${item.calories.toStringAsFixed(1)} ккал'),
+                                  Text('• Белки базы: ${item.protein}г | Жиры: ${item.fat}г | Углеводы: ${item.carbs}г'),
+                                  const Divider(),
+                                  Text('Фактически усвоено (на ${item.weightEaten.toStringAsFixed(0)}г):', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                                  Text('• Расчетные Белки: ${item.totalProtein.toStringAsFixed(1)}г'),
+                                  Text('• Расчетные Жиры: ${item.totalFat.toStringAsFixed(1)}г'),
+                                  Text('• Расчетные Углеводы: ${item.totalCarbs.toStringAsFixed(1)}г'),
+                                ],
+                              ),
+                            )
+                          ],
+                        );
+                      },
                     ),
-                  )
-                ],
-              );
-            },
-          ),
-        ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Закрыть'))],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context), 
+                child: const Text('Закрыть')
+              )
+            ],
+          );
+        },
       ),
     );
   }
