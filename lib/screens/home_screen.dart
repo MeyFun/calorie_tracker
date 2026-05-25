@@ -4,6 +4,8 @@ import 'package:intl/intl.dart'; // Понадобится для красиво
 import '../models/user_profile.dart';
 import '../models/food_item.dart';
 import '../models/food_group.dart';
+import 'templates_screen.dart';
+import '../models/food_template.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -237,7 +239,62 @@ class _HomeScreenState extends State<HomeScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text('Добавить пищу', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
+              
+              // --- КНОПКА ВЫБОРА ИЗ БАЗЫ ГОТОВЫХ ПРОДУКТОВ ---
+              OutlinedButton.icon(
+                onPressed: () async {
+                  // Открываем мини-окно выбора шаблона прямо поверх формы
+                  final templateBox = Hive.box('templatesBox');
+                  final List rawTemplates = templateBox.get('list') as List? ?? [];
+                  final templates = rawTemplates.map((e) => FoodTemplate.fromMap(e as Map)).toList();
+
+                  if (templates.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Ваша база продуктов пуста! Сначала добавьте продукты через верхнее меню.')),
+                    );
+                    return;
+                  }
+
+                  // Показываем быстрый диалог выбора
+                  final FoodTemplate? selected = await showDialog<FoodTemplate>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Выбрать продукт из базы'),
+                      content: SizedBox(
+                        width: double.maxFinite,
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: templates.length,
+                          itemBuilder: (context, idx) {
+                            final t = templates[idx];
+                            return ListTile(
+                              title: Text(t.name),
+                              subtitle: Text('${t.calories.toStringAsFixed(0)} ккал на ${t.baseWeight.toStringAsFixed(0)}г'),
+                              onTap: () => Navigator.pop(context, t),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  );
+
+                  // Если пользователь выбрал продукт, автоматически заполняем поля формы!
+                  if (selected != null) {
+                    _itemNameController.text = selected.name;
+                    _baseWeightController.text = selected.baseWeight.toStringAsFixed(0);
+                    _calController.text = selected.calories.toStringAsFixed(0);
+                    _proteinController.text = selected.protein.toString();
+                    _fatController.text = selected.fat.toString();
+                    _carbsController.text = selected.carbs.toString();
+                  }
+                },
+                icon: const Icon(Icons.storage, color: Colors.green),
+                label: const Text('Выбрать из базы продуктов', style: TextStyle(color: Colors.green)),
+                style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(45)),
+              ),
+              
+              const SizedBox(height: 12),
               TextField(controller: _groupNameController, decoration: const InputDecoration(labelText: 'Название группы/блюда', border: OutlineInputBorder())),
               const SizedBox(height: 8),
               TextField(controller: _itemNameController, decoration: const InputDecoration(labelText: 'Конкретный ингредиент', border: OutlineInputBorder())),
@@ -258,7 +315,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
               const SizedBox(height: 8),
-              // Объединяем Вес 1 порции и Количество в аккуратную строку
               Row(
                 children: [
                   Expanded(
@@ -308,6 +364,16 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.book_online_outlined),
+            tooltip: 'База продуктов',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const TemplatesScreen()),
+              );
+            },
+          ),
           // Кнопка вызова календаря
           IconButton(
             icon: const Icon(Icons.calendar_month),
