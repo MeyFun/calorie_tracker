@@ -200,11 +200,25 @@ class _HomeScreenState extends State<HomeScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('На упаковке было указано КБЖУ на: ${item.baseWeight.toStringAsFixed(0)}г'),
-                                  Text('• Калорийность базы: ${item.calories.toStringAsFixed(1)} ккал'),
-                                  Text('• Белки базы: ${item.protein}г | Жиры: ${item.fat}г | Углеводы: ${item.carbs}г'),
+                                  Text('Внесено в базу: КБЖУ на ${item.baseWeight.toStringAsFixed(0)}г'),
+                                  const SizedBox(height: 4),
+                                  // --- Считаем и выводим КБЖУ строго на 100 грамм для наглядности ---
+                                  Text(
+                                    '• На 100г продукта:', 
+                                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey[700])
+                                  ),
+                                  Text('  Калории: ${((item.calories * 100) / item.baseWeight).toStringAsFixed(1)} ккал'),
+                                  Text(
+                                    '  Б: ${((item.protein * 100) / item.baseWeight).toStringAsFixed(1)}г | '
+                                    'Ж: ${((item.fat * 100) / item.baseWeight).toStringAsFixed(1)}г | '
+                                    'У: ${((item.carbs * 100) / item.baseWeight).toStringAsFixed(1)}г'
+                                  ),
                                   const Divider(),
-                                  Text('Фактически усвоено (на ${item.totalWeight.toStringAsFixed(0)}г):', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                                  // Фактически съеденное (остается без изменений, так как считает сумму)
+                                  Text(
+                                    'Фактически усвоено (на ${item.totalWeight.toStringAsFixed(0)}г):', 
+                                    style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)
+                                  ),
                                   Text('• Расчетные Белки: ${item.totalProtein.toStringAsFixed(1)}г'),
                                   Text('• Расчетные Жиры: ${item.totalFat.toStringAsFixed(1)}г'),
                                   Text('• Расчетные Углеводы: ${item.totalCarbs.toStringAsFixed(1)}г'),

@@ -120,11 +120,24 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                   margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   child: ListTile(
                     title: Text(t.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text('На ${t.baseWeight.toStringAsFixed(0)}г: Б: ${t.protein} | Ж: ${t.fat} | У: ${t.carbs}'),
+                    
+                    // --- ПЕРЕСЧИТЫВАЕМ БЖУ НА 100 ГРАММ ДЛЯ ВЫВОДА ---
+                    subtitle: Text(
+                      'В пересчете на 100г:\n'
+                      'Б: ${((t.protein * 100) / t.baseWeight).toStringAsFixed(1)}г | '
+                      'Ж: ${((t.fat * 100) / t.baseWeight).toStringAsFixed(1)}г | '
+                      'У: ${((t.carbs * 100) / t.baseWeight).toStringAsFixed(1)}г',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                    ),
+                    
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('${t.calories.toStringAsFixed(0)} ккал', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                        // --- ПЕРЕСЧИТЫВАЕМ КАЛОРИИ НА 100 ГРАММ ---
+                        Text(
+                          '${((t.calories * 100) / t.baseWeight).toStringAsFixed(0)} ккал/100г', 
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)
+                        ),
                         IconButton(
                           icon: const Icon(Icons.delete_outline, color: Colors.red),
                           onPressed: () {
