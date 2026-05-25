@@ -264,6 +264,11 @@ class _HomeScreenState extends State<HomeScreen> {
               final profile = UserProfile.fromMap(rawProfile);
               final int norm = profile.dailyCalories;
 
+              // Считаем съеденные БЖУ за сегодня
+              double eatenP = _currentDayEntries.fold(0, (sum, g) => sum + g.totalProtein);
+              double eatenF = _currentDayEntries.fold(0, (sum, g) => sum + g.totalFat);
+              double eatenC = _currentDayEntries.fold(0, (sum, g) => sum + g.totalCarbs);
+
               return Container(
                 margin: const EdgeInsets.all(16),
                 padding: const EdgeInsets.all(16),
@@ -283,7 +288,19 @@ class _HomeScreenState extends State<HomeScreen> {
                       minHeight: 12,
                     ),
                     const SizedBox(height: 8),
-                    Text('Принято за $formattedDate: ${_totalCaloriesToday.toStringAsFixed(0)} / $norm ккал', style: const TextStyle(fontSize: 15)),
+                    Text('Принято за $formattedDate: ${_totalCaloriesToday.toStringAsFixed(0)} / $norm ккал', style: const TextStyle(fontSize: 14, color: Colors.grey)),
+                    
+                    const Divider(height: 24, thickness: 1),
+                    
+                    // --- НОВЫЙ БЛОК: СТАТИСТИКА БЖУ ---
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildNutrientColumn('Белки', eatenP, profile.targetProtein, Colors.orange),
+                        _buildNutrientColumn('Жиры', eatenF, profile.targetFat, Colors.blue),
+                        _buildNutrientColumn('Угл.', eatenC, profile.targetCarbs, Colors.redAccent),
+                      ],
+                    ),
                   ],
                 ),
               );
@@ -325,4 +342,27 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  // Вспомогательный виджет для красивого вывода отдельного нутриента
+  Widget _buildNutrientColumn(String label, double eaten, int target, Color color) {
+    double progress = target > 0 ? eaten / target : 0;
+    return Column(
+      children: [
+        Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        const SizedBox(height: 4),
+        Text('${eaten.toStringAsFixed(0)}/${target}г', style: TextStyle(color: Colors.grey[800], fontSize: 13)),
+        const SizedBox(height: 6),
+        SizedBox(
+          width: 70,
+          child: LinearProgressIndicator(
+            value: progress,
+            backgroundColor: Colors.grey[200],
+            color: progress > 1.0 ? Colors.red : color,
+            minHeight: 6,
+          ),
+        ),
+      ],
+    );
+  }
+
 }
