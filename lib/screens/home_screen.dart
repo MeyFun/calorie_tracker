@@ -25,7 +25,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<FoodGroup> _currentDayEntries = [];
 
   // Контроллеры ввода
-  final _groupNameController = TextEditingController(text: "Одиночный продукт");
+  final _groupNameController = TextEditingController(text: "");
   final _itemNameController = TextEditingController();
   final _baseWeightController = TextEditingController(text: "100");
   final _calController = TextEditingController();
