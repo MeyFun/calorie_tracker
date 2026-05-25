@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:intl/intl.dart'; // Понадобится для красивого форматирования дат
+import 'package:intl/intl.dart'; 
 import '../models/user_profile.dart';
 import '../models/food_item.dart';
 import '../models/food_group.dart';
 import 'templates_screen.dart';
 import '../models/food_template.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,10 +18,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _box = Hive.box('settingsBox');
   
-  // Текущая выбранная дата ( по дефолту — сегодня )
   DateTime _selectedDate = DateTime.now();
   
-  // Дневник теперь хранит данные по дням: {'2026-05-25': [FoodGroup1, FoodGroup2]}
   Map<String, List<FoodGroup>> _allDaysJournal = {};
   List<FoodGroup> _currentDayEntries = [];
 
@@ -33,7 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _fatController = TextEditingController();
   final _carbsController = TextEditingController();
   final _eatenWeightController = TextEditingController();
-  final _quantityController = TextEditingController(text: "1"); // Контроллер количества
+  final _quantityController = TextEditingController(text: "1");
 
   @override
   void initState() {
@@ -41,14 +40,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadData();
   }
 
-  // Преобразуем DateTime в строку-ключ "YYYY-MM-DD"
   String _dateToKey(DateTime date) {
     return "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
   }
 
   void _loadData() {
     setState(() {
-      // 1. Загружаем структуру журнала из базы
       var rawJournal = _box.get('foodJournalMap') as Map? ?? {};
       
       _allDaysJournal = rawJournal.map((key, value) {
@@ -59,18 +56,15 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       });
 
-      // 2. Достаем продукты конкретно для выбранного дня
       String dateKey = _dateToKey(_selectedDate);
       _currentDayEntries = _allDaysJournal[dateKey] ?? [];
     });
   }
 
   void _saveJournalToDatabase() {
-    // Обновляем текущий день в общем словаре перед сохранением
     String dateKey = _dateToKey(_selectedDate);
     _allDaysJournal[dateKey] = _currentDayEntries;
 
-    // Конвертируем всю структуру в Map для Hive
     final mapToSave = _allDaysJournal.map((key, value) {
       return MapEntry(key, value.map((g) => g.toMap()).toList());
     });
@@ -78,21 +72,24 @@ class _HomeScreenState extends State<HomeScreen> {
     _box.put('foodJournalMap', mapToSave);
   }
 
+  // Расчет суммарных КБЖУ за выбранный день
   double get _totalCaloriesToday => _currentDayEntries.fold(0, (sum, group) => sum + group.totalCalories);
+  double get _totalProteinToday => _currentDayEntries.fold(0, (sum, group) => sum + group.totalProtein);
+  double get _totalFatToday => _currentDayEntries.fold(0, (sum, group) => sum + group.totalFat);
+  double get _totalCarbsToday => _currentDayEntries.fold(0, (sum, group) => sum + group.totalCarbs);
 
-  // Функция вызова календаря (Пункт 3)
   void _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
-      firstDate: DateTime(2025), // С какого года работает история
+      firstDate: DateTime(2025),
       lastDate: DateTime(2101),
-      locale: const Locale('ru', 'RU'), // Локализация на русский язык
+      locale: const Locale('ru', 'RU'),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: const ColorScheme.light(
-              primary: Colors.green, // Цвет шапки календаря
+              primary: Colors.green,
               onPrimary: Colors.white,
               onSurface: Colors.black,
             ),
@@ -104,7 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (picked != null && picked != _selectedDate) {
       setState(() {
         _selectedDate = picked;
-        _loadData(); // Переподтягиваем продукты для новой выбранной даты
+        _loadData();
       });
     }
   }
@@ -120,23 +117,22 @@ class _HomeScreenState extends State<HomeScreen> {
       calories: double.tryParse(_calController.text) ?? 0,
       baseWeight: double.tryParse(_baseWeightController.text) ?? 100,
       weightEaten: double.tryParse(_eatenWeightController.text) ?? 0,
-      quantity: int.tryParse(_quantityController.text) ?? 1, // Привязываем количество
+      quantity: int.tryParse(_quantityController.text) ?? 1,
     );
 
     setState(() {
       String gName = _groupNameController.text.trim();
       if (gName.isEmpty) gName = "Одиночный продукт";
 
-      var existingGroup = _currentDayEntries.firstWhere(
-        (g) => g.groupName.toLowerCase() == gName.toLowerCase(), 
-        orElse: () => FoodGroup(groupName: gName, items: [])
+      // Исправленный поиск и добавление группы
+      int existingIndex = _currentDayEntries.indexWhere(
+        (g) => g.groupName.toLowerCase() == gName.toLowerCase()
       );
 
-      if (!_currentDayEntries.contains(existingGroup)) {
-        existingGroup.items.add(newItem);
-        _currentDayEntries.add(existingGroup);
+      if (existingIndex != -1) {
+        _currentDayEntries[existingIndex].items.add(newItem);
       } else {
-        existingGroup.items.add(newItem);
+        _currentDayEntries.add(FoodGroup(groupName: gName, items: [newItem]));
       }
 
       _saveJournalToDatabase();
@@ -146,16 +142,15 @@ class _HomeScreenState extends State<HomeScreen> {
     _itemNameController.clear(); _calController.clear(); _proteinController.clear();
     _fatController.clear(); _carbsController.clear(); _eatenWeightController.clear();
     _baseWeightController.text = "100"; _groupNameController.text = "Одиночный продукт";
-    _quantityController.text = "1"; // Сброс поля штучности
+    _quantityController.text = "1";
     
     Navigator.pop(context);
   }
 
-  // Окно просмотра подробных данных КБЖУ с возможностью удаления
   void _showDetailsDialog(FoodGroup group) {
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder( // Используем StatefulBuilder, чтобы окно обновлялось при удалении элементов
+      builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
             title: Text('Детали: ${group.groupName}', style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -169,28 +164,19 @@ class _HomeScreenState extends State<HomeScreen> {
                       itemBuilder: (context, idx) {
                         final item = group.items[idx];
                         return ExpansionTile(
-                          // Выводим название, вес одной штуки и их количество
                           title: Text('${item.name} (${item.weightEaten.toStringAsFixed(0)}г х ${item.quantity}шт)', style: const TextStyle(fontWeight: FontWeight.bold)),
                           subtitle: Text('Итого вес: ${item.totalWeight.toStringAsFixed(0)}г | ${item.totalCalories.toStringAsFixed(0)} ккал'),
-                          // КНОПКА УДАЛЕНИЯ ПРОДУКТА
                           trailing: IconButton(
                             icon: const Icon(Icons.delete_outline, color: Colors.red),
                             onPressed: () {
                               setState(() {
-                                // 1. Удаляем продукт из группы на главном экране
                                 group.items.removeAt(idx);
-                                
-                                // 2. Если в группе не осталось продуктов, удаляем саму группу (блюдо)
                                 if (group.items.isEmpty) {
                                   _currentDayEntries.remove(group);
-                                  Navigator.pop(context); // Закрываем диалог, так как блюда больше нет
+                                  Navigator.pop(context); 
                                 }
-                                
-                                // 3. Сохраняем обновленный журнал в локальную БД Hive
                                 _saveJournalToDatabase();
                               });
-                              
-                              // Обновляем состояние внутри самого открытого диалогового окна
                               setDialogState(() {});
                             },
                           ),
@@ -202,7 +188,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                 children: [
                                   Text('Внесено в базу: КБЖУ на ${item.baseWeight.toStringAsFixed(0)}г'),
                                   const SizedBox(height: 4),
-                                  // --- Считаем и выводим КБЖУ строго на 100 грамм для наглядности ---
                                   Text(
                                     '• На 100г продукта:', 
                                     style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey[700])
@@ -214,7 +199,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                     'У: ${((item.carbs * 100) / item.baseWeight).toStringAsFixed(1)}г'
                                   ),
                                   const Divider(),
-                                  // Фактически съеденное (остается без изменений, так как считает сумму)
                                   Text(
                                     'Фактически усвоено (на ${item.totalWeight.toStringAsFixed(0)}г):', 
                                     style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)
@@ -254,11 +238,8 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               const Text('Добавить пищу', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
-              
-              // --- КНОПКА ВЫБОРА ИЗ БАЗЫ ГОТОВЫХ ПРОДУКТОВ ---
               OutlinedButton.icon(
                 onPressed: () async {
-                  // Открываем мини-окно выбора шаблона прямо поверх формы
                   final templateBox = Hive.box('templatesBox');
                   final List rawTemplates = templateBox.get('list') as List? ?? [];
                   final templates = rawTemplates.map((e) => FoodTemplate.fromMap(e as Map)).toList();
@@ -270,7 +251,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     return;
                   }
 
-                  // Показываем быстрый диалог выбора
                   final FoodTemplate? selected = await showDialog<FoodTemplate>(
                     context: context,
                     builder: (context) => AlertDialog(
@@ -293,7 +273,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   );
 
-                  // Если пользователь выбрал продукт, автоматически заполняем поля формы!
                   if (selected != null) {
                     _itemNameController.text = selected.name;
                     _baseWeightController.text = selected.baseWeight.toStringAsFixed(0);
@@ -307,7 +286,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 label: const Text('Выбрать из базы продуктов', style: TextStyle(color: Colors.green)),
                 style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(45)),
               ),
-              
               const SizedBox(height: 12),
               TextField(controller: _groupNameController, decoration: const InputDecoration(labelText: 'Название группы/блюда', border: OutlineInputBorder())),
               const SizedBox(height: 8),
@@ -366,10 +344,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Красиво форматируем выбранную дату для вывода на экран (например, "25 мая")
     String formattedDate = DateFormat('d MMMM', 'ru').format(_selectedDate);
-    
-    // Проверка, выбран ли сегодняшний день
     bool isToday = _dateToKey(_selectedDate) == _dateToKey(DateTime.now());
 
     return Scaffold(
@@ -388,7 +363,16 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
           ),
-          // Кнопка вызова календаря
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Настройка цели',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SettingsScreen()),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.calendar_month),
             tooltip: 'Выбрать дату',
@@ -398,62 +382,75 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Column(
         children: [
-          ValueListenableBuilder(
-            valueListenable: Hive.box('settingsBox').listenable(),
-            builder: (context, Box box, child) {
-              final rawProfile = box.get('userProfile');
-              final profile = UserProfile.fromMap(rawProfile);
-              final int norm = profile.dailyCalories;
+          Card(
+            margin: const EdgeInsets.all(12),
+            elevation: 3,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+              child: ValueListenableBuilder(
+                valueListenable: Hive.box('settingsBox').listenable(),
+                builder: (context, box, child) {
+                  final rawProfile = box.get('userProfile');
+                  
+                  int maxCalories = 2500; 
+                  int targetProtein = 150;
+                  int targetFat = 80;
+                  int targetCarbs = 250;
+                  bool isGoalActive = false;
 
-              // Считаем съеденные БЖУ за сегодня
-              double eatenP = _currentDayEntries.fold(0, (sum, g) => sum + g.totalProtein);
-              double eatenF = _currentDayEntries.fold(0, (sum, g) => sum + g.totalFat);
-              double eatenC = _currentDayEntries.fold(0, (sum, g) => sum + g.totalCarbs);
+                  if (rawProfile != null) {
+                    final profile = UserProfile.fromMap(rawProfile as Map);
+                    
+                    if (profile.weight > profile.targetWeight && profile.weeksToGoal > 0) {
+                      maxCalories = profile.dailyCalories;
+                      isGoalActive = true;
+                    } else {
+                      maxCalories = profile.maintenanceCalories;
+                    }
 
-              return Container(
-                margin: const EdgeInsets.all(16),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [BoxShadow(color: Colors.grey.withValues(alpha: 0.1), blurRadius: 10)],
-                ),
-                child: Column(
-                  children: [
-                    Text('Норма дня: $norm ккал', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 10),
-                    LinearProgressIndicator(
-                      value: norm > 0 ? _totalCaloriesToday / norm : 0,
-                      backgroundColor: Colors.grey[200],
-                      color: _totalCaloriesToday > norm ? Colors.red : Colors.green,
-                      minHeight: 12,
-                    ),
-                    const SizedBox(height: 8),
-                    Text('Принято за $formattedDate: ${_totalCaloriesToday.toStringAsFixed(0)} / $norm ккал', style: const TextStyle(fontSize: 14, color: Colors.grey)),
-                    
-                    const Divider(height: 24, thickness: 1),
-                    
-                    // --- СТАТИСТИКА БЖУ ---
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _buildNutrientColumn('Белки', eatenP, profile.targetProtein, Colors.orange),
-                        _buildNutrientColumn('Жиры', eatenF, profile.targetFat, Colors.blue),
-                        _buildNutrientColumn('Угл.', eatenC, profile.targetCarbs, Colors.redAccent),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            },
+                    targetProtein = profile.targetProtein;
+                    targetFat = profile.targetFat;
+                    targetCarbs = profile.targetCarbs;
+                  }
+
+                  return Column(
+                    children: [
+                      Text(
+                        isGoalActive ? 'Целевая норма (Дефицит):' : 'Норма поддержания веса:',
+                        style: const TextStyle(fontSize: 14, color: Colors.grey, fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${_totalCaloriesToday.toStringAsFixed(0)} / $maxCalories ккал',
+                        style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: Colors.green),
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8.0),
+                        child: Divider(),
+                      ),
+                      // КРАСИВЫЙ ИНТЕРФЕЙС: Выводим интерактивные полосы прогресса БЖУ
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _buildNutrientColumn('Белки', _totalProteinToday, targetProtein, Colors.orange),
+                          _buildNutrientColumn('Жиры', _totalFatToday, targetFat, Colors.blue),
+                          _buildNutrientColumn('Углеводы', _totalCarbsToday, targetCarbs, Colors.purple),
+                        ],
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
           ),
           Expanded(
             child: _currentDayEntries.isEmpty
                 ? Center(
                     child: Text(
                       isToday 
-                        ? 'Сегодня вы еще ничего не добавили.' 
-                        : 'Нет записей за $formattedDate.',
+                          ? 'Сегодня вы еще ничего не добавили.' 
+                          : 'Нет записей за $formattedDate.',
                       style: const TextStyle(color: Colors.grey, fontSize: 16),
                     ),
                   )
@@ -484,22 +481,22 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Вспомогательный виджет для красивого вывода отдельного нутриента
   Widget _buildNutrientColumn(String label, double eaten, int target, Color color) {
     double progress = target > 0 ? eaten / target : 0;
     return Column(
       children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
         const SizedBox(height: 4),
-        Text('${eaten.toStringAsFixed(0)}/${target}г', style: TextStyle(color: Colors.grey[800], fontSize: 13)),
+        Text('${eaten.toStringAsFixed(0)}/${target}г', style: TextStyle(color: Colors.grey[800], fontSize: 12)),
         const SizedBox(height: 6),
         SizedBox(
-          width: 70,
+          width: 85,
           child: LinearProgressIndicator(
             value: progress,
             backgroundColor: Colors.grey[200],
             color: progress > 1.0 ? Colors.red : color,
             minHeight: 6,
+            borderRadius: BorderRadius.circular(4),
           ),
         ),
       ],
