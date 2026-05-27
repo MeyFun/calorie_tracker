@@ -72,7 +72,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _box.put('foodJournalMap', mapToSave);
   }
 
-  // Расчет суммарных КБЖУ за выбранный день
+  // Расчет суммарных КБЖУ за выбранный день (геттеры FoodGroup уже учитывают коэффициент)
   double get _totalCaloriesToday => _currentDayEntries.fold(0, (sum, group) => sum + group.totalCalories);
   double get _totalProteinToday => _currentDayEntries.fold(0, (sum, group) => sum + group.totalProtein);
   double get _totalFatToday => _currentDayEntries.fold(0, (sum, group) => sum + group.totalFat);
@@ -124,7 +124,6 @@ class _HomeScreenState extends State<HomeScreen> {
       String gName = _groupNameController.text.trim();
       if (gName.isEmpty) gName = "";
 
-      // Исправленный поиск и добавление группы
       int existingIndex = _currentDayEntries.indexWhere(
         (g) => g.groupName.toLowerCase() == gName.toLowerCase()
       );
@@ -153,7 +152,8 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
-            title: Text('Детали: ${group.groupName}', style: const TextStyle(fontWeight: FontWeight.bold)),
+            title: Text('Детали: ${group.groupName.isEmpty ? "Без названия" : group.groupName}', 
+                style: const TextStyle(fontWeight: FontWeight.bold)),
             content: SizedBox(
               width: double.maxFinite,
               child: group.items.isEmpty
@@ -164,7 +164,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       itemBuilder: (context, idx) {
                         final item = group.items[idx];
                         return ExpansionTile(
-                          title: Text('${item.name} (${item.weightEaten.toStringAsFixed(0)}г х ${item.quantity}шт)', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          title: Text('${item.name} (${item.weightEaten.toStringAsFixed(0)}г х ${item.quantity}шт)', 
+                              style: const TextStyle(fontWeight: FontWeight.bold)),
                           subtitle: Text('Итого вес: ${item.totalWeight.toStringAsFixed(0)}г | ${item.totalCalories.toStringAsFixed(0)} ккал'),
                           trailing: IconButton(
                             icon: const Icon(Icons.delete_outline, color: Colors.red),
@@ -203,9 +204,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                     'Фактически усвоено (на ${item.totalWeight.toStringAsFixed(0)}г):', 
                                     style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)
                                   ),
-                                  Text('• Расчетные Белки: ${item.totalProtein.toStringAsFixed(1)}г'),
-                                  Text('• Расчетные Жиры: ${item.totalFat.toStringAsFixed(1)}г'),
-                                  Text('• Расчетные Углеводы: ${item.totalCarbs.toStringAsFixed(1)}г'),
+                                  Text('• Расчетные Белки: ${(item.totalProtein * group.portionRatio).toStringAsFixed(1)}г'),
+                                  Text('• Расчетные Жиры: ${(item.totalFat * group.portionRatio).toStringAsFixed(1)}г'),
+                                  Text('• Расчетные Углеводы: ${(item.totalCarbs * group.portionRatio).toStringAsFixed(1)}г'),
                                 ],
                               ),
                             )
@@ -429,7 +430,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         padding: EdgeInsets.symmetric(vertical: 8.0),
                         child: Divider(),
                       ),
-                      // КРАСИВЫЙ ИНТЕРФЕЙС: Выводим интерактивные полосы прогресса БЖУ
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
@@ -460,12 +460,37 @@ class _HomeScreenState extends State<HomeScreen> {
                       final group = _currentDayEntries[index];
                       return Card(
                         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                        child: ListTile(
-                          onTap: () => _showDetailsDialog(group),
-                          title: Text(group.groupName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                          subtitle: Text('Ингредиентов: ${group.items.length}\nБ: ${group.totalProtein.toStringAsFixed(1)} | Ж: ${group.totalFat.toStringAsFixed(1)} | У: ${group.totalCarbs.toStringAsFixed(1)}'),
-                          trailing: Text('${group.totalCalories.toStringAsFixed(0)} ккал', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 16)),
-                          isThreeLine: true,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8.0),
+                          child: ListTile(
+                            onTap: () => _showDetailsDialog(group),
+                            title: Text(group.groupName.isEmpty ? 'Без названия' : group.groupName, 
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            subtitle: Padding(
+                              padding: const EdgeInsets.only(top: 4.0),
+                              child: Text('Ингредиентов: ${group.items.length}\nБ: ${group.totalProtein.toStringAsFixed(1)} | Ж: ${group.totalFat.toStringAsFixed(1)} | У: ${group.totalCarbs.toStringAsFixed(1)}'),
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Поле для изменения коэффициента порции
+                                PortionInputField(
+                                  initialValue: group.portionRatio,
+                                  onChanged: (newRatio) {
+                                    setState(() {
+                                      group.portionRatio = newRatio;
+                                      _saveJournalToDatabase();
+                                    });
+                                  },
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '${group.totalCalories.toStringAsFixed(0)} ккал', 
+                                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 15)
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       );
                     },
@@ -500,6 +525,87 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ],
+    );
+  }
+}
+
+// Изолированный виджет текстового инпута
+class PortionInputField extends StatefulWidget {
+  final double initialValue;
+  final ValueChanged<double> onChanged;
+
+  const PortionInputField({
+    super.key, 
+    required this.initialValue, 
+    required this.onChanged
+  });
+
+  @override
+  State<PortionInputField> createState() => _PortionInputFieldState();
+}
+
+class _PortionInputFieldState extends State<PortionInputField> {
+  late TextEditingController _controller;
+  
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    String text = widget.initialValue % 1 == 0 
+        ? widget.initialValue.toStringAsFixed(0) 
+        : widget.initialValue.toStringAsFixed(1);
+    _controller = TextEditingController(text: text);
+  }
+
+  @override
+  void didUpdateWidget(covariant PortionInputField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialValue != widget.initialValue && !_focusNode.hasFocus) {
+      String text = widget.initialValue % 1 == 0 
+          ? widget.initialValue.toStringAsFixed(0) 
+          : widget.initialValue.toStringAsFixed(1);
+      _controller.text = text;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 48,
+      height: 34,
+      alignment: Alignment.center,
+      child: TextField(
+        controller: _controller,
+        focusNode: _focusNode,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+        decoration: InputDecoration(
+          contentPadding: EdgeInsets.zero,
+          hintText: '1.0',
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(6),
+            borderSide: const BorderSide(color: Colors.green, width: 1.5),
+          ),
+        ),
+        onChanged: (value) {
+          double? parsedValue = double.tryParse(value.replaceAll(',', '.'));
+          if (parsedValue != null && parsedValue >= 0) {
+            widget.onChanged(parsedValue);
+          } else if (value.isEmpty) {
+            widget.onChanged(0.0);
+          }
+        },
+      ),
     );
   }
 }
