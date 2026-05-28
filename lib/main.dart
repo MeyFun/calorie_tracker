@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:flutter_localizations/flutter_localizations.dart'; // <-- Наш импорт
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'screens/main_navigation.dart';
 
 void main() async {

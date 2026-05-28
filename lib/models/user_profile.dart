@@ -2,8 +2,8 @@ class UserProfile {
   String fullName;
   int age;
   double weight;          // Текущий вес
-  double targetWeight;    // Целевой вес (НОВОЕ)
-  int weeksToGoal;        // Срок в неделях (НОВОЕ)
+  double targetWeight;    // Целевой вес
+  int weeksToGoal;        // Срок в неделях
   double height;
   double activityFactor;
 
