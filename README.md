@@ -1,17 +1,41 @@
-# calorie_tracker
+# 🥑 Мой Баланс (Дневник Питания)
 
-A new Flutter project.
+**Мой Баланс** — это легковесное, быстрое и полностью конфиденциальное мобильное приложение на Flutter для отслеживания ежедневного рациона и контроля КБЖУ (Калории, Белки, Жиры, Углеводы). Приложение создано для тех, кто хочет держать форму, находиться в дефиците или профиците калорий без перегруженных и навязчивых интерфейсов.
 
-## Getting Started
+---
 
-This project is a starting point for a Flutter application.
+## 🚀 Скачать APK
 
-A few resources to get you started if this is your first Flutter project:
+Вы можете скачать актуальную готовую сборку приложения напрямую из раздела релизов GitHub:
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+👉 **[Скачать NutriJournal.apk (Последний релиз)](https://github.com/MeyFun/calorie_tracker/releases/tag/v1.0.0)**
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+---
+
+## ✨ Основные возможности
+
+* **Гибкий дневник питания:** Возможность группировать продукты по блюдам/приемам пищи (например, «Яичница», «Суп» и т.д.).
+* **Динамический коэффициент порции:** Уникальная фича прямого редактирования коэффициента блюда (например, введя `0.5` или `1.2`), которая мгновенно пересчитывает КБЖУ всех ингредиентов без необходимости переписывать каждый продукт отдельно.
+* **Локальная база продуктов (Шаблоны):** Сохраняйте часто используемые продукты один раз, чтобы затем добавлять их в дневник в один клик.
+* **Умный расчет целей:** Интегрированный профиль пользователя, рассчитывающий норму поддержания веса и целевой дефицит калорий.
+* **Календарная история:** Просматривайте и редактируйте логи питания за любой прошедший или будущий день.
+* **100% Приватность:** Все данные хранятся локально на вашем устройстве в зашифрованных боксах `Hive`. Никаких серверов, сбора данных и обязательной регистрации.
+
+---
+
+## 🛠 Стек технологий
+
+* **Framework:** Flutter (Dart)
+* **Database / Local Storage:** Hive & Hive Flutter (быстрое NoSQL хранилище ключ-значение)
+* **State Management:** Vanilla StatefulWidget + ValueListenableBuilder (для реактивного обновления UI при изменении настроек)
+* **Localization & Formatting:** `intl` (полная поддержка русскоязычного календаря и дат)
+
+---
+
+## 🏗 Архитектура проекта
+
+Приложение построено с четким разделением логики и интерфейса (близко к Clean Architecture / Repository Pattern):
+
+## 📝 Разработчик
+MeyFun Studio
+Автор: Марат Валевич (MeyFun)
