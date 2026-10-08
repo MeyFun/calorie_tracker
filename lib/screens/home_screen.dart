@@ -4,9 +4,9 @@ import 'package:intl/intl.dart';
 import '../models/user_profile.dart';
 import '../models/food_item.dart';
 import '../models/food_group.dart';
+import '../utils/calorie_target_storage.dart';
 import 'templates_screen.dart';
 import '../models/food_template.dart';
-import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -38,6 +38,20 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _groupNameController.dispose();
+    _itemNameController.dispose();
+    _baseWeightController.dispose();
+    _calController.dispose();
+    _proteinController.dispose();
+    _fatController.dispose();
+    _carbsController.dispose();
+    _eatenWeightController.dispose();
+    _quantityController.dispose();
+    super.dispose();
   }
 
   String _dateToKey(DateTime date) {
@@ -365,16 +379,6 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.settings),
-            tooltip: 'Настройка цели',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const SettingsScreen()),
-              );
-            },
-          ),
-          IconButton(
             icon: const Icon(Icons.calendar_month),
             tooltip: 'Выбрать дату',
             onPressed: () => _selectDate(context),
@@ -394,31 +398,27 @@ class _HomeScreenState extends State<HomeScreen> {
                 builder: (context, box, child) {
                   final rawProfile = box.get('userProfile');
                   
-                  int maxCalories = 2500; 
                   int targetProtein = 150;
                   int targetFat = 80;
                   int targetCarbs = 250;
-                  bool isGoalActive = false;
+                  UserProfile? profile;
 
                   if (rawProfile != null) {
-                    final profile = UserProfile.fromMap(rawProfile as Map);
-                    
-                    if (profile.weight > profile.targetWeight && profile.weeksToGoal > 0) {
-                      maxCalories = profile.dailyCalories;
-                      isGoalActive = true;
-                    } else {
-                      maxCalories = profile.maintenanceCalories;
-                    }
-
+                    profile = UserProfile.fromMap(rawProfile as Map);
                     targetProtein = profile.targetProtein;
                     targetFat = profile.targetFat;
                     targetCarbs = profile.targetCarbs;
                   }
+                  final maxCalories = calorieTargetForDate(
+                    box,
+                    _selectedDate,
+                    profile,
+                  );
 
                   return Column(
                     children: [
                       Text(
-                        isGoalActive ? 'Целевая норма (Дефицит):' : 'Норма поддержания веса:',
+                        'Норма калорий на этот день:',
                         style: const TextStyle(fontSize: 14, color: Colors.grey, fontWeight: FontWeight.w500),
                       ),
                       const SizedBox(height: 4),
@@ -512,7 +512,7 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
         const SizedBox(height: 4),
-        Text('${eaten.toStringAsFixed(0)}/${target}г', style: TextStyle(color: Colors.grey[800], fontSize: 12)),
+        Text('${eaten.toStringAsFixed(0)}/$targetг', style: TextStyle(color: Colors.grey[800], fontSize: 12)),
         const SizedBox(height: 6),
         SizedBox(
           width: 85,

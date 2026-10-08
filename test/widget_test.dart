@@ -1,30 +1,84 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+import 'dart:io';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 import 'package:calorie_tracker/main.dart';
+import 'package:calorie_tracker/models/user_profile.dart';
+import 'package:calorie_tracker/utils/calorie_target_storage.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
+  late Directory hiveDirectory;
+
+  setUpAll(() async {
+    hiveDirectory = await Directory.systemTemp.createTemp(
+      'calorie_tracker_test',
+    );
+    Hive.init(hiveDirectory.path);
+    await Hive.openBox('settingsBox');
+    await Hive.openBox('templatesBox');
+  });
+
+  tearDownAll(() async {
+    await Hive.close();
+    await hiveDirectory.delete(recursive: true);
+  });
+
+  test('keeps a separate calorie target snapshot for each date', () {
+    final date = DateTime(2026, 10, 8);
+    final originalProfile = UserProfile(
+      weight: 90,
+      targetWeight: 80,
+      daysToGoal: 84,
+    );
+    final originalTarget = calorieTargetForDate(
+      Hive.box('settingsBox'),
+      date,
+      originalProfile,
+    );
+
+    final changedProfile = UserProfile(
+      weight: 75,
+      targetWeight: 80,
+      daysToGoal: 84,
+    );
+
+    expect(
+      calorieTargetForDate(Hive.box('settingsBox'), date, changedProfile),
+      originalTarget,
+    );
+    expect(
+      calorieTargetForDate(
+        Hive.box('settingsBox'),
+        date.add(const Duration(days: 1)),
+        changedProfile,
+      ),
+      calculateDiaryCalorieTarget(changedProfile),
+    );
+  });
+
+  test('migrates the previously saved goal duration from weeks to days', () {
+    final profile = UserProfile.fromMap({
+      'weight': 90,
+      'targetWeight': 80,
+      'weeksToGoal': 12,
+    });
+
+    expect(profile.daysToGoal, 84);
+  });
+
+  testWidgets('shows the diary and opens the profile tab', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(const CalorieTrackerApp());
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    expect(find.text('Дневник: Сегодня'), findsOneWidget);
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    await tester.tap(find.text('Профиль'));
+    await tester.pumpAndSettle();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Профиль и цели'), findsOneWidget);
+    expect(find.text('За сколько дней достичь цели?'), findsOneWidget);
+    expect(find.text('Целевые КБЖУ в день'), findsOneWidget);
   });
 }
