@@ -7,7 +7,13 @@ import 'screens/main_navigation.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
-  await Hive.openBox('settingsBox');
+  final settingsBox = await Hive.openBox('settingsBox');
+  if (settingsBox.containsKey('localProfileAuth')) {
+    await settingsBox.delete('localProfileAuth');
+  }
+  if (settingsBox.containsKey('localProfileSession')) {
+    await settingsBox.delete('localProfileSession');
+  }
   await Hive.openBox('templatesBox');
 
   await SystemChrome.setPreferredOrientations([

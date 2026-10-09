@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../models/user_profile.dart';
 import '../utils/calorie_target_storage.dart';
+import '../services/nutrition_report_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -23,6 +27,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   late UserProfile _savedProfile;
   late double _selectedActivity;
+  late DateTimeRange _reportRange;
+  final _reportService = NutritionReportService();
 
   final Map<double, String> _activityOptions = {
     1.2: 'Сидячий образ жизни (нет нагрузок)',
@@ -37,6 +43,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _savedProfile = UserProfile.fromMap(_box.get('userProfile') as Map?);
     _selectedActivity = _savedProfile.activityFactor;
     _setControllers(_savedProfile);
+    final today = DateUtils.dateOnly(DateTime.now());
+    _reportRange = DateTimeRange(
+      start: today.subtract(const Duration(days: 6)),
+      end: today,
+    );
   }
 
   void _setControllers(UserProfile profile) {
@@ -60,22 +71,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   UserProfile get _draftProfile => UserProfile(
-        fullName: _nameController.text,
-        age: int.tryParse(_ageController.text) ?? _savedProfile.age,
-        height:
-            double.tryParse(_heightController.text.replaceAll(',', '.')) ??
-                _savedProfile.height,
-        weight:
-            double.tryParse(_weightController.text.replaceAll(',', '.')) ??
-                _savedProfile.weight,
-        targetWeight: double.tryParse(
-              _targetWeightController.text.replaceAll(',', '.'),
-            ) ??
-            _savedProfile.targetWeight,
-        daysToGoal:
-            int.tryParse(_daysToGoalController.text) ?? _savedProfile.daysToGoal,
-        activityFactor: _selectedActivity,
-      );
+    fullName: _nameController.text,
+    age: int.tryParse(_ageController.text) ?? _savedProfile.age,
+    height:
+        double.tryParse(_heightController.text.replaceAll(',', '.')) ??
+        _savedProfile.height,
+    weight:
+        double.tryParse(_weightController.text.replaceAll(',', '.')) ??
+        _savedProfile.weight,
+    targetWeight:
+        double.tryParse(_targetWeightController.text.replaceAll(',', '.')) ??
+        _savedProfile.targetWeight,
+    daysToGoal:
+        int.tryParse(_daysToGoalController.text) ?? _savedProfile.daysToGoal,
+    activityFactor: _selectedActivity,
+  );
 
   void _saveProfile() {
     final profile = _draftProfile;
@@ -91,21 +101,138 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Future<void> _shareNutritionReport(BuildContext overlayContext) async {
+    late final String report;
+    try {
+      report = _reportService.buildReport(
+        _box,
+        _reportRange.start,
+        _reportRange.end,
+        profile: _draftProfile,
+      );
+    } on ArgumentError catch (error) {
+      _showReportError(error.message.toString());
+      return;
+    } on FormatException catch (error) {
+      _showReportError('Не удалось сформировать отчёт: ${error.message}');
+      return;
+    }
+
+    Navigator.of(overlayContext).pop();
+    try {
+      await SharePlus.instance.share(
+        ShareParams(text: report, subject: 'Статистика питания'),
+      );
+    } on PlatformException catch (error) {
+      _showReportError('Не удалось открыть меню отправки: ${error.message}');
+    }
+  }
+
+  void _showReportError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
+  }
+
+  Future<void> _showShareOverlay() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (overlayContext) => StatefulBuilder(
+        builder: (context, setOverlayState) => SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              20,
+              20,
+              MediaQuery.of(context).viewInsets.bottom + 20,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Поделиться статистикой',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Выберите период, чтобы отправить потреблённые и целевые КБЖУ.',
+                ),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final today = DateUtils.dateOnly(DateTime.now());
+                    final selectedRange = await showDateRangePicker(
+                      context: context,
+                      initialDateRange: _reportRange,
+                      firstDate: DateTime(2025),
+                      lastDate: DateTime(2101),
+                      locale: const Locale('ru', 'RU'),
+                      currentDate: today,
+                      builder: (context, child) => Theme(
+                        data: Theme.of(context).copyWith(
+                          colorScheme: const ColorScheme.light(
+                            primary: Colors.green,
+                            onPrimary: Colors.white,
+                            onSurface: Colors.black,
+                          ),
+                        ),
+                        child: child!,
+                      ),
+                    );
+                    if (selectedRange == null || !mounted) return;
+                    setState(() => _reportRange = selectedRange);
+                    setOverlayState(() {});
+                  },
+                  icon: const Icon(Icons.date_range),
+                  label: Text(
+                    '${DateFormat('d MMM yyyy', 'ru').format(_reportRange.start)}'
+                    ' — '
+                    '${DateFormat('d MMM yyyy', 'ru').format(_reportRange.end)}',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () => _shareNutritionReport(overlayContext),
+                  icon: const Icon(Icons.share),
+                  label: const Text('Поделиться'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final profile = _draftProfile;
-    final goalText = profile.daysToGoal <= 0 ||
-            profile.targetWeight == profile.weight
+    final goalText =
+        profile.daysToGoal <= 0 || profile.targetWeight == profile.weight
         ? 'Норма поддержания веса'
         : profile.targetWeight < profile.weight
-            ? 'Норма для снижения веса'
-            : 'Норма для набора веса';
+        ? 'Норма для снижения веса'
+        : 'Норма для набора веса';
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Профиль и цели'),
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            onPressed: _showShareOverlay,
+            tooltip: 'Поделиться статистикой',
+            icon: const Icon(Icons.share),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -138,8 +265,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Expanded(
                   child: TextField(
                     controller: _heightController,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     decoration: const InputDecoration(
                       labelText: 'Рост (см)',
                       border: OutlineInputBorder(),
@@ -155,8 +283,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Expanded(
                   child: TextField(
                     controller: _weightController,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     decoration: const InputDecoration(
                       labelText: 'Текущий вес (кг)',
                       border: OutlineInputBorder(),
@@ -168,8 +297,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Expanded(
                   child: TextField(
                     controller: _targetWeightController,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     decoration: const InputDecoration(
                       labelText: 'Целевой вес (кг)',
                       border: OutlineInputBorder(),
@@ -217,10 +347,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   Text(
                     goalText,
-                    style: const TextStyle(
-                      color: Colors.grey,
-                      fontSize: 16,
-                    ),
+                    style: const TextStyle(color: Colors.grey, fontSize: 16),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -265,4 +392,5 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
+
 }

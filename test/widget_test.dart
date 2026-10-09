@@ -47,6 +47,14 @@ void main() {
       calorieTargetForDate(Hive.box('settingsBox'), date, changedProfile),
       originalTarget,
     );
+    final savedTargets = nutritionTargetsForDate(
+      Hive.box('settingsBox'),
+      date,
+      changedProfile,
+    );
+    expect(savedTargets.protein, originalProfile.targetProtein);
+    expect(savedTargets.fat, originalProfile.targetFat);
+    expect(savedTargets.carbs, originalProfile.targetCarbs);
     expect(
       calorieTargetForDate(
         Hive.box('settingsBox'),
@@ -67,9 +75,10 @@ void main() {
     expect(profile.daysToGoal, 84);
   });
 
-  testWidgets('shows the diary and opens the profile tab', (
+  testWidgets('shows the diary and profile share overlay', (
     WidgetTester tester,
   ) async {
+    await Hive.box('settingsBox').clear();
     await tester.pumpWidget(const CalorieTrackerApp());
 
     expect(find.text('Дневник: Сегодня'), findsOneWidget);
@@ -80,5 +89,9 @@ void main() {
     expect(find.text('Профиль и цели'), findsOneWidget);
     expect(find.text('За сколько дней достичь цели?'), findsOneWidget);
     expect(find.text('Целевые КБЖУ в день'), findsOneWidget);
+    await tester.tap(find.byTooltip('Поделиться статистикой'));
+    await tester.pumpAndSettle();
+    expect(find.text('Поделиться статистикой'), findsOneWidget);
+    expect(find.text('Поделиться'), findsOneWidget);
   });
 }
