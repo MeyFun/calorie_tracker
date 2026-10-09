@@ -5,8 +5,10 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/user_profile.dart';
+import '../services/food_recognition_service.dart';
 import '../utils/calorie_target_storage.dart';
 import '../services/nutrition_report_service.dart';
+import '../widgets/health_glass.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -24,6 +26,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _weightController = TextEditingController();
   final _targetWeightController = TextEditingController();
   final _daysToGoalController = TextEditingController();
+  final _geminiApiKeyController = TextEditingController();
 
   late UserProfile _savedProfile;
   late double _selectedActivity;
@@ -67,6 +70,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _weightController.dispose();
     _targetWeightController.dispose();
     _daysToGoalController.dispose();
+    _geminiApiKeyController.dispose();
     super.dispose();
   }
 
@@ -96,7 +100,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Профиль и цель успешно сохранены!'),
-        backgroundColor: Colors.green,
+        backgroundColor: Color(0xFF6D9B7E),
       ),
     );
   }
@@ -174,7 +178,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       builder: (context, child) => Theme(
                         data: Theme.of(context).copyWith(
                           colorScheme: const ColorScheme.light(
-                            primary: Colors.green,
+                            primary: Color(0xFF6D9B7E),
                             onPrimary: Colors.white,
                             onSurface: Colors.black,
                           ),
@@ -199,7 +203,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   icon: const Icon(Icons.share),
                   label: const Text('Поделиться'),
                   style: FilledButton.styleFrom(
-                    backgroundColor: Colors.green,
+                    backgroundColor: const Color(0xFF6D9B7E),
                     minimumSize: const Size.fromHeight(48),
                   ),
                 ),
@@ -209,6 +213,120 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _showGeminiApiKeyOverlay() async {
+    _geminiApiKeyController.text =
+        _box.get(FoodRecognitionService.apiKeyStorageKey) as String? ?? '';
+    var obscureApiKey = true;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (overlayContext) => StatefulBuilder(
+        builder: (context, setOverlayState) => SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              20,
+              20,
+              MediaQuery.of(context).viewInsets.bottom + 20,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Ключ Gemini',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Ключ хранится только на этом устройстве и используется '
+                  'для распознавания блюд по фото. Не передавайте его другим.',
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _geminiApiKeyController,
+                  obscureText: obscureApiKey,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  keyboardType: TextInputType.visiblePassword,
+                  decoration: InputDecoration(
+                    labelText: 'API-ключ Gemini',
+                    hintText: 'Вставьте API-ключ',
+                    suffixIcon: IconButton(
+                      tooltip: obscureApiKey ? 'Показать ключ' : 'Скрыть ключ',
+                      onPressed: () =>
+                          setOverlayState(() => obscureApiKey = !obscureApiKey),
+                      icon: Icon(
+                        obscureApiKey
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: () => _saveGeminiApiKey(overlayContext),
+                  icon: const Icon(Icons.save_outlined),
+                  label: const Text('Сохранить ключ'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF6D9B7E),
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                ),
+                if (_geminiApiKeyController.text.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: () {
+                      _geminiApiKeyController.clear();
+                      setOverlayState(() {});
+                    },
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Удалить сохранённый ключ'),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveGeminiApiKey(BuildContext overlayContext) async {
+    final apiKey = _geminiApiKeyController.text.trim();
+    try {
+      if (apiKey.isEmpty) {
+        await _box.delete(FoodRecognitionService.apiKeyStorageKey);
+      } else {
+        await _box.put(FoodRecognitionService.apiKeyStorageKey, apiKey);
+      }
+    } catch (error) {
+      if (mounted && overlayContext.mounted) {
+        _showApiKeyMessage('Не удалось сохранить ключ Gemini: $error');
+      }
+      return;
+    }
+
+    if (!mounted || !overlayContext.mounted) return;
+    setState(() {});
+    Navigator.of(overlayContext).pop();
+    _showApiKeyMessage(
+      apiKey.isEmpty
+          ? 'Ключ Gemini удалён с устройства.'
+          : 'Ключ Gemini сохранён на устройстве.',
+    );
+  }
+
+  void _showApiKeyMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -224,9 +342,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Профиль и цели'),
-        backgroundColor: Colors.green,
-        foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            onPressed: _showGeminiApiKeyOverlay,
+            tooltip: 'Настроить Gemini API',
+            icon: Icon(
+              _hasGeminiApiKey ? Icons.auto_awesome : Icons.key_outlined,
+            ),
+          ),
           IconButton(
             onPressed: _showShareOverlay,
             tooltip: 'Поделиться статистикой',
@@ -234,163 +357,191 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextField(
-              controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'ФИО',
-                border: OutlineInputBorder(),
-              ),
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _ageController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Возраст',
-                      border: OutlineInputBorder(),
+      backgroundColor: Colors.transparent,
+      body: HealthBackground(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              GlassPanel(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextField(
+                      controller: _nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'ФИО',
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (_) => setState(() {}),
                     ),
-                    onChanged: (_) => setState(() {}),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _ageController,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Возраст',
+                              border: OutlineInputBorder(),
+                            ),
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: _heightController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: const InputDecoration(
+                              labelText: 'Рост (см)',
+                              border: OutlineInputBorder(),
+                            ),
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _weightController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: const InputDecoration(
+                              labelText: 'Текущий вес (кг)',
+                              border: OutlineInputBorder(),
+                            ),
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: _targetWeightController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: const InputDecoration(
+                              labelText: 'Целевой вес (кг)',
+                              border: OutlineInputBorder(),
+                            ),
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _daysToGoalController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'За сколько дней достичь цели?',
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<double>(
+                      key: ValueKey('profile_activity_$_selectedActivity'),
+                      initialValue: _selectedActivity,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Уровень активности',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _activityOptions.entries
+                          .map(
+                            (entry) => DropdownMenuItem(
+                              value: entry.key,
+                              child: Text(entry.value),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setState(() => _selectedActivity = value);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              GlassPanel(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 22,
+                ),
+                child: Center(
+                  child: Column(
+                    children: [
+                      Text(
+                        goalText,
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${profile.dailyCalories} ккал/день',
+                        style: const TextStyle(
+                          color: Color(0xFF5E9274),
+                          fontSize: 30,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Целевые КБЖУ в день',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Белки: ${profile.targetProtein} г   '
+                        'Жиры: ${profile.targetFat} г   '
+                        'Углеводы: ${profile.targetCarbs} г',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: _heightController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'Рост (см)',
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                onPressed: _saveProfile,
+                icon: const Icon(Icons.check_circle_outline_rounded),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(54),
+                  backgroundColor: const Color(0xFF6D9B7E),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _weightController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'Текущий вес (кг)',
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (_) => setState(() {}),
-                  ),
+                label: const Text(
+                  'Сохранить профиль и цель',
+                  style: TextStyle(fontSize: 16),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: _targetWeightController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'Целевой вес (кг)',
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (_) => setState(() {}),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _daysToGoalController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'За сколько дней достичь цели?',
-                border: OutlineInputBorder(),
               ),
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<double>(
-              key: ValueKey('profile_activity_$_selectedActivity'),
-              initialValue: _selectedActivity,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Уровень активности',
-                border: OutlineInputBorder(),
-              ),
-              items: _activityOptions.entries
-                  .map(
-                    (entry) => DropdownMenuItem(
-                      value: entry.key,
-                      child: Text(entry.value),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) {
-                if (value == null) return;
-                setState(() => _selectedActivity = value);
-              },
-            ),
-            const Divider(height: 36, thickness: 2),
-            Center(
-              child: Column(
-                children: [
-                  Text(
-                    goalText,
-                    style: const TextStyle(color: Colors.grey, fontSize: 16),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${profile.dailyCalories} ккал/день',
-                    style: const TextStyle(
-                      color: Colors.green,
-                      fontSize: 30,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Целевые КБЖУ в день',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Белки: ${profile.targetProtein} г   '
-                    'Жиры: ${profile.targetFat} г   '
-                    'Углеводы: ${profile.targetCarbs} г',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _saveProfile,
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size.fromHeight(52),
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text(
-                'Сохранить профиль и цель',
-                style: TextStyle(fontSize: 16),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
+  bool get _hasGeminiApiKey =>
+      (_box.get(FoodRecognitionService.apiKeyStorageKey) as String? ?? '')
+          .trim()
+          .isNotEmpty;
 }

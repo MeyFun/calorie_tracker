@@ -75,13 +75,18 @@ void main() {
     expect(profile.daysToGoal, 84);
   });
 
-  testWidgets('shows the diary and profile share overlay', (
+  testWidgets('shows the diary, AI photo tab, and profile share overlay', (
     WidgetTester tester,
   ) async {
     await Hive.box('settingsBox').clear();
+    await Hive.box('settingsBox').put('geminiApiKey', 'test-api-key');
     await tester.pumpWidget(const CalorieTrackerApp());
 
     expect(find.text('Дневник: Сегодня'), findsOneWidget);
+
+    await tester.tap(find.text('ИИ фото'));
+    await tester.pumpAndSettle();
+    expect(find.text('ИИ распознавание блюда'), findsOneWidget);
 
     await tester.tap(find.text('Профиль'));
     await tester.pumpAndSettle();

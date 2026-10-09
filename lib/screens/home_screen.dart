@@ -4,7 +4,9 @@ import 'package:intl/intl.dart';
 import '../models/user_profile.dart';
 import '../models/food_item.dart';
 import '../models/food_group.dart';
+import '../models/food_scan_result.dart';
 import '../utils/calorie_target_storage.dart';
+import '../widgets/health_glass.dart';
 import 'templates_screen.dart';
 import '../models/food_template.dart';
 
@@ -12,10 +14,10 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  HomeScreenState createState() => HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class HomeScreenState extends State<HomeScreen> {
   final _box = Hive.box('settingsBox');
 
   DateTime _selectedDate = DateTime.now();
@@ -33,6 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _carbsController = TextEditingController();
   final _eatenWeightController = TextEditingController();
   final _quantityController = TextEditingController(text: "1");
+  bool _showIngredientListLabel = false;
 
   @override
   void initState() {
@@ -107,7 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: const ColorScheme.light(
-              primary: Colors.green,
+              primary: Color(0xFF6D9B7E),
               onPrimary: Colors.white,
               onSurface: Colors.black,
             ),
@@ -124,37 +127,66 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _addFoodEntry() {
-    if (_itemNameController.text.isEmpty ||
-        _eatenWeightController.text.isEmpty) {
+  void _addFoodEntry({FoodGroup? editingGroup, FoodItem? editingItem}) {
+    final calories = _parseNumericField(_calController.text);
+    final protein = _parseNumericField(_proteinController.text);
+    final fat = _parseNumericField(_fatController.text);
+    final carbs = _parseNumericField(_carbsController.text);
+    final baseWeight = _parseNumericField(_baseWeightController.text);
+    final eatenWeight = _parseNumericField(_eatenWeightController.text);
+    if (_itemNameController.text.trim().isEmpty ||
+        eatenWeight == null ||
+        baseWeight == null ||
+        baseWeight <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Укажите ингредиенты и корректный вес блюда.'),
+        ),
+      );
       return;
     }
 
     final newItem = FoodItem(
       name: _itemNameController.text,
-      protein: double.tryParse(_proteinController.text) ?? 0,
-      fat: double.tryParse(_fatController.text) ?? 0,
-      carbs: double.tryParse(_carbsController.text) ?? 0,
-      calories: double.tryParse(_calController.text) ?? 0,
-      baseWeight: double.tryParse(_baseWeightController.text) ?? 100,
-      weightEaten: double.tryParse(_eatenWeightController.text) ?? 0,
+      protein: protein ?? 0,
+      fat: fat ?? 0,
+      carbs: carbs ?? 0,
+      calories: calories ?? 0,
+      baseWeight: baseWeight,
+      weightEaten: eatenWeight,
       quantity: int.tryParse(_quantityController.text) ?? 1,
     );
 
-    setState(() {
-      String gName = _groupNameController.text.trim();
-      if (gName.isEmpty) gName = "";
-
-      int existingIndex = _currentDayEntries.indexWhere(
-        (g) => g.groupName.toLowerCase() == gName.toLowerCase(),
+    final itemIndex = editingGroup != null && editingItem != null
+        ? editingGroup.items.indexOf(editingItem)
+        : -1;
+    if (editingGroup != null && editingItem != null && itemIndex == -1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Не удалось найти продукт для редактирования.'),
+        ),
       );
+      return;
+    }
 
-      if (existingIndex != -1) {
-        _currentDayEntries[existingIndex].items.add(newItem);
+    setState(() {
+      if (editingGroup != null && editingItem != null) {
+        editingGroup.groupName = _groupNameController.text.trim();
+        editingGroup.items[itemIndex] = newItem;
       } else {
-        _currentDayEntries.add(FoodGroup(groupName: gName, items: [newItem]));
-      }
+        final groupName = _groupNameController.text.trim();
+        final existingIndex = _currentDayEntries.indexWhere(
+          (group) => group.groupName.toLowerCase() == groupName.toLowerCase(),
+        );
 
+        if (existingIndex != -1) {
+          _currentDayEntries[existingIndex].items.add(newItem);
+        } else {
+          _currentDayEntries.add(
+            FoodGroup(groupName: groupName, items: [newItem]),
+          );
+        }
+      }
       _saveJournalToDatabase();
     });
 
@@ -168,8 +200,42 @@ class _HomeScreenState extends State<HomeScreen> {
     _baseWeightController.text = "100";
     _groupNameController.text = "";
     _quantityController.text = "1";
+    _showIngredientListLabel = false;
 
     Navigator.pop(context);
+  }
+
+  double? _parseNumericField(String value) =>
+      double.tryParse(value.trim().replaceAll(',', '.'));
+
+  void showAddFoodWithScan(FoodScanResult result) {
+    _groupNameController.text = result.dishName;
+    _itemNameController.text = result.ingredients.join(', ');
+    _baseWeightController.text = '100';
+    _calController.text = result.caloriesPer100g.toStringAsFixed(1);
+    _proteinController.text = result.proteinPer100g.toStringAsFixed(1);
+    _fatController.text = result.fatPer100g.toStringAsFixed(1);
+    _carbsController.text = result.carbsPer100g.toStringAsFixed(1);
+    _eatenWeightController.text = result.estimatedWeightGrams.toStringAsFixed(
+      0,
+    );
+    _quantityController.text = '1';
+    _showIngredientListLabel = true;
+    _showAddFoodBottomSheet();
+  }
+
+  void _editFoodItem(FoodGroup group, FoodItem item) {
+    _groupNameController.text = group.groupName;
+    _itemNameController.text = item.name;
+    _baseWeightController.text = item.baseWeight.toStringAsFixed(0);
+    _calController.text = item.calories.toStringAsFixed(1);
+    _proteinController.text = item.protein.toStringAsFixed(1);
+    _fatController.text = item.fat.toStringAsFixed(1);
+    _carbsController.text = item.carbs.toStringAsFixed(1);
+    _eatenWeightController.text = item.weightEaten.toStringAsFixed(1);
+    _quantityController.text = item.quantity.toString();
+    _showIngredientListLabel = false;
+    _showAddFoodBottomSheet(editingGroup: group, editingItem: item);
   }
 
   void _showDetailsDialog(FoodGroup group) {
@@ -201,22 +267,45 @@ class _HomeScreenState extends State<HomeScreen> {
                           subtitle: Text(
                             'Итого вес: ${item.totalWeight.toStringAsFixed(0)}г | ${item.totalCalories.toStringAsFixed(0)} ккал',
                           ),
-                          trailing: IconButton(
-                            icon: const Icon(
-                              Icons.delete_outline,
-                              color: Colors.red,
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                group.items.removeAt(idx);
-                                if (group.items.isEmpty) {
-                                  _currentDayEntries.remove(group);
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                tooltip: 'Редактировать продукт',
+                                icon: const Icon(
+                                  Icons.edit_outlined,
+                                  color: Color(0xFF6D9B7E),
+                                ),
+                                onPressed: () {
                                   Navigator.pop(context);
-                                }
-                                _saveJournalToDatabase();
-                              });
-                              setDialogState(() {});
-                            },
+                                  WidgetsBinding.instance.addPostFrameCallback((
+                                    _,
+                                  ) {
+                                    if (mounted) {
+                                      _editFoodItem(group, item);
+                                    }
+                                  });
+                                },
+                              ),
+                              IconButton(
+                                tooltip: 'Удалить продукт',
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.red,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    group.items.removeAt(idx);
+                                    if (group.items.isEmpty) {
+                                      _currentDayEntries.remove(group);
+                                      Navigator.pop(context);
+                                    }
+                                    _saveJournalToDatabase();
+                                  });
+                                  setDialogState(() {});
+                                },
+                              ),
+                            ],
                           ),
                           children: [
                             Padding(
@@ -247,7 +336,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   Text(
                                     'Фактически усвоено (на ${item.totalWeight.toStringAsFixed(0)}г):',
                                     style: const TextStyle(
-                                      color: Colors.green,
+                                      color: Color(0xFF6D9B7E),
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
@@ -280,197 +369,225 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showAddFoodBottomSheet() {
+  void _showAddFoodBottomSheet({
+    FoodGroup? editingGroup,
+    FoodItem? editingItem,
+  }) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-          left: 16,
-          right: 16,
-          top: 16,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Добавить пищу',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: () async {
-                  final templateBox = Hive.box('templatesBox');
-                  final List rawTemplates =
-                      templateBox.get('list') as List? ?? [];
-                  final templates = rawTemplates
-                      .map((e) => FoodTemplate.fromMap(e as Map))
-                      .toList();
+      useSafeArea: true,
+      builder: (context) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+            left: 16,
+            right: 16,
+            top: 16,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  editingItem == null
+                      ? 'Добавить пищу'
+                      : 'Редактировать запись',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final templateBox = Hive.box('templatesBox');
+                    final List rawTemplates =
+                        templateBox.get('list') as List? ?? [];
+                    final templates = rawTemplates
+                        .map((e) => FoodTemplate.fromMap(e as Map))
+                        .toList();
 
-                  if (templates.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Ваша база продуктов пуста! Сначала добавьте продукты через верхнее меню.',
+                    if (templates.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Ваша база продуктов пуста! Сначала добавьте продукты через верхнее меню.',
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+
+                    final FoodTemplate?
+                    selected = await showDialog<FoodTemplate>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Выбрать продукт из базы'),
+                        content: SizedBox(
+                          width: double.maxFinite,
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: templates.length,
+                            itemBuilder: (context, idx) {
+                              final t = templates[idx];
+                              return ListTile(
+                                title: Text(t.name),
+                                subtitle: Text(
+                                  '${t.calories.toStringAsFixed(0)} ккал на ${t.baseWeight.toStringAsFixed(0)}г',
+                                ),
+                                onTap: () => Navigator.pop(context, t),
+                              );
+                            },
+                          ),
                         ),
                       ),
                     );
-                    return;
-                  }
 
-                  final FoodTemplate? selected = await showDialog<FoodTemplate>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Выбрать продукт из базы'),
-                      content: SizedBox(
-                        width: double.maxFinite,
-                        child: ListView.builder(
-                          shrinkWrap: true,
-                          itemCount: templates.length,
-                          itemBuilder: (context, idx) {
-                            final t = templates[idx];
-                            return ListTile(
-                              title: Text(t.name),
-                              subtitle: Text(
-                                '${t.calories.toStringAsFixed(0)} ккал на ${t.baseWeight.toStringAsFixed(0)}г',
-                              ),
-                              onTap: () => Navigator.pop(context, t),
-                            );
-                          },
+                    if (selected != null) {
+                      _itemNameController.text = selected.name;
+                      _baseWeightController.text = selected.baseWeight
+                          .toStringAsFixed(0);
+                      _calController.text = selected.calories.toStringAsFixed(
+                        0,
+                      );
+                      _proteinController.text = selected.protein.toString();
+                      _fatController.text = selected.fat.toString();
+                      _carbsController.text = selected.carbs.toString();
+                    }
+                  },
+                  icon: const Icon(Icons.storage, color: Color(0xFF6D9B7E)),
+                  label: const Text(
+                    'Выбрать из базы продуктов',
+                    style: TextStyle(color: Color(0xFF6D9B7E)),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(45),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _groupNameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Блюдо / приём пищи',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _itemNameController,
+                  decoration: InputDecoration(
+                    labelText: _showIngredientListLabel
+                        ? 'Ингредиенты (через запятую)'
+                        : 'Конкретный ингредиент',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _baseWeightController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Вес базы (г)',
                         ),
                       ),
                     ),
-                  );
-
-                  if (selected != null) {
-                    _itemNameController.text = selected.name;
-                    _baseWeightController.text = selected.baseWeight
-                        .toStringAsFixed(0);
-                    _calController.text = selected.calories.toStringAsFixed(0);
-                    _proteinController.text = selected.protein.toString();
-                    _fatController.text = selected.fat.toString();
-                    _carbsController.text = selected.carbs.toString();
-                  }
-                },
-                icon: const Icon(Icons.storage, color: Colors.green),
-                label: const Text(
-                  'Выбрать из базы продуктов',
-                  style: TextStyle(color: Colors.green),
-                ),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(45),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _groupNameController,
-                decoration: const InputDecoration(
-                  labelText: 'Название группы/блюда',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _itemNameController,
-                decoration: const InputDecoration(
-                  labelText: 'Конкретный ингредиент',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _baseWeightController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Вес на упаковке (г)',
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: TextField(
+                        controller: _calController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(labelText: 'Калории'),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: TextField(
-                      controller: _calController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Калории на этот вес',
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _proteinController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Белки'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: _fatController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Жиры'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: _carbsController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Углеводы'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: TextField(
-                      controller: _eatenWeightController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Вес 1 порции/шт (г)',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 1,
-                    child: TextField(
-                      controller: _quantityController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Кол-во (шт)',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _addFoodEntry,
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(50),
-                  backgroundColor: Colors.green,
+                  ],
                 ),
-                child: const Text(
-                  'Внести в дневник',
-                  style: TextStyle(color: Colors.white),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _proteinController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(labelText: 'Белки'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: _fatController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(labelText: 'Жиры'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: _carbsController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Углеводы',
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 16),
-            ],
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: TextField(
+                        controller: _eatenWeightController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Вес порции (г)',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 1,
+                      child: TextField(
+                        controller: _quantityController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Кол-во (шт)',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: () => _addFoodEntry(
+                    editingGroup: editingGroup,
+                    editingItem: editingItem,
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(50),
+                    backgroundColor: const Color(0xFF6D9B7E),
+                  ),
+                  child: Text(
+                    editingItem == null
+                        ? 'Внести в дневник'
+                        : 'Сохранить изменения',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         ),
       ),
@@ -485,8 +602,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(isToday ? 'Дневник: Сегодня' : 'Дневник: $formattedDate'),
-        backgroundColor: Colors.green,
-        foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.book_online_outlined),
@@ -507,16 +622,13 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Card(
-            margin: const EdgeInsets.all(12),
-            elevation: 3,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+      backgroundColor: Colors.transparent,
+      body: HealthBackground(
+        child: Column(
+          children: [
+            GlassPanel(
+              margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
               child: ValueListenableBuilder(
                 valueListenable: Hive.box('settingsBox').listenable(),
                 builder: (context, box, child) {
@@ -550,7 +662,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         style: const TextStyle(
                           fontSize: 30,
                           fontWeight: FontWeight.bold,
-                          color: Colors.green,
+                          color: Color(0xFF5E9274),
                         ),
                       ),
                       const Padding(
@@ -585,80 +697,104 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
               ),
             ),
-          ),
-          Expanded(
-            child: _currentDayEntries.isEmpty
-                ? Center(
-                    child: Text(
-                      isToday
-                          ? 'Сегодня вы еще ничего не добавили.'
-                          : 'Нет записей за $formattedDate.',
-                      style: const TextStyle(color: Colors.grey, fontSize: 16),
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: _currentDayEntries.length,
-                    itemBuilder: (context, index) {
-                      final group = _currentDayEntries[index];
-                      return Card(
-                        margin: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 6,
+            Expanded(
+              child: _currentDayEntries.isEmpty
+                  ? Center(
+                      child: GlassPanel(
+                        margin: const EdgeInsets.all(28),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 28,
                         ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8.0),
-                          child: ListTile(
-                            onTap: () => _showDetailsDialog(group),
-                            title: Text(
-                              group.groupName.isEmpty
-                                  ? 'Без названия'
-                                  : group.groupName,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.eco_outlined,
+                              size: 42,
+                              color: Color(0xFF789B82),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              isToday
+                                  ? 'Сегодня вы еще ничего не добавили.'
+                                  : 'Нет записей за $formattedDate.',
+                              textAlign: TextAlign.center,
                               style: const TextStyle(
-                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF66786C),
                                 fontSize: 16,
                               ),
                             ),
-                            subtitle: Padding(
-                              padding: const EdgeInsets.only(top: 4.0),
-                              child: Text(
-                                'Ингредиентов: ${group.items.length}\nБ: ${group.totalProtein.toStringAsFixed(1)} | Ж: ${group.totalFat.toStringAsFixed(1)} | У: ${group.totalCarbs.toStringAsFixed(1)}',
+                          ],
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.only(bottom: 100),
+                      itemCount: _currentDayEntries.length,
+                      itemBuilder: (context, index) {
+                        final group = _currentDayEntries[index];
+                        return GlassPanel(
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 6,
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: ListTile(
+                              onTap: () => _showDetailsDialog(group),
+                              title: Text(
+                                group.groupName.isEmpty
+                                    ? 'Без названия'
+                                    : group.groupName,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              subtitle: Padding(
+                                padding: const EdgeInsets.only(top: 4.0),
+                                child: Text(
+                                  'Ингредиентов: ${group.items.length}\nБ: ${group.totalProtein.toStringAsFixed(1)} | Ж: ${group.totalFat.toStringAsFixed(1)} | У: ${group.totalCarbs.toStringAsFixed(1)}',
+                                ),
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  PortionInputField(
+                                    initialValue: group.portionRatio,
+                                    onChanged: (newRatio) {
+                                      setState(() {
+                                        group.portionRatio = newRatio;
+                                        _saveJournalToDatabase();
+                                      });
+                                    },
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '${group.totalCalories.toStringAsFixed(0)} ккал',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF5E9274),
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                // Поле для изменения коэффициента порции
-                                PortionInputField(
-                                  initialValue: group.portionRatio,
-                                  onChanged: (newRatio) {
-                                    setState(() {
-                                      group.portionRatio = newRatio;
-                                      _saveJournalToDatabase();
-                                    });
-                                  },
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  '${group.totalCalories.toStringAsFixed(0)} ккал',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.green,
-                                    fontSize: 15,
-                                  ),
-                                ),
-                              ],
-                            ),
                           ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddFoodBottomSheet,
-        backgroundColor: Colors.green,
+        backgroundColor: const Color(0xFF6D9B7E),
+        elevation: 6,
         child: const Icon(Icons.add, color: Colors.white),
       ),
     );
@@ -763,7 +899,7 @@ class _PortionInputFieldState extends State<PortionInputField> {
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(6),
-            borderSide: const BorderSide(color: Colors.green, width: 1.5),
+            borderSide: const BorderSide(color: Color(0xFF6D9B7E), width: 1.5),
           ),
         ),
         onChanged: (value) {
